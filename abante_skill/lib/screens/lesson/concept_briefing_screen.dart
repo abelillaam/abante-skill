@@ -1,40 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../models/lesson.dart';
+import '../../services/curriculum_repository.dart';
+import '../../services/lesson_content_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/editor_dot.dart';
 import '../../widgets/pressable_scale.dart';
 import '../../widgets/progress_dots.dart';
 import 'ide_workspace_screen.dart';
-
-class _TheoryCard {
-  const _TheoryCard({required this.heading, required this.analogy, required this.snippet});
-
-  final String heading;
-  final String analogy;
-  final String snippet;
-}
-
-const _cards = [
-  _TheoryCard(
-    heading: 'Think of it like a light switch',
-    analogy:
-        "An if statement checks a condition and only runs code when it's true — just like a switch only turns "
-        'the light on when it\'s flipped up.',
-    snippet: 'if age >= 18:\n    print("You can vote!")',
-  ),
-  _TheoryCard(
-    heading: 'Add an alternative with else',
-    analogy: 'When the condition is false, else gives your program a fallback path to take instead.',
-    snippet: 'if age >= 18:\n    print("You can vote!")\nelse:\n    print("Not yet!")',
-  ),
-  _TheoryCard(
-    heading: 'Chain more checks with elif',
-    analogy: 'Need more than two outcomes? elif lets you test additional conditions in order.',
-    snippet: 'if score >= 90:\n    grade = "A"\nelif score >= 80:\n    grade = "B"\nelse:\n    grade = "C"',
-  ),
-];
 
 class ConceptBriefingScreen extends StatefulWidget {
   const ConceptBriefingScreen({super.key, required this.lesson});
@@ -48,12 +22,37 @@ class ConceptBriefingScreen extends StatefulWidget {
 class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
   final _pageController = PageController();
   int _pageIndex = 0;
+  bool _isLoading = true;
+  List<TheoryCard> _cards = fallbackTheoryCards;
 
   bool get _isLastCard => _pageIndex == _cards.length - 1;
 
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final cards = await LessonContentService.generate(
+      lessonTitle: widget.lesson.title,
+      lessonSummary: widget.lesson.summary,
+      level: CurriculumRepository.level,
+    );
+    if (!mounted) return;
+    setState(() {
+      _cards = cards;
+      _isLoading = false;
+    });
+  }
+
   void _onNext() {
     if (_isLastCard) {
-      Navigator.of(context).pushReplacement(
+      // A plain push (not pushReplacement) here — replacing this route
+      // would complete the Future that showLessonOverviewSheet's caller is
+      // awaiting (a replaced route resolves the same as a popped one),
+      // which pops the IDE workspace screen the instant it appears.
+      Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => IdeWorkspaceScreen(lesson: widget.lesson)),
       );
       return;
@@ -73,30 +72,32 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            ProgressDots(count: _cards.length, currentIndex: _pageIndex),
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                physics: const BouncingScrollPhysics(),
-                itemCount: _cards.length,
-                onPageChanged: (index) => setState(() => _pageIndex = index),
-                itemBuilder: (context, index) => _TheoryCardView(card: _cards[index]),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  const SizedBox(height: 8),
+                  ProgressDots(count: _cards.length, currentIndex: _pageIndex),
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _cards.length,
+                      onPageChanged: (index) => setState(() => _pageIndex = index),
+                      itemBuilder: (context, index) => _TheoryCardView(card: _cards[index]),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                    child: PressableScale(
+                      child: FilledButton(
+                        onPressed: _onNext,
+                        child: Text(_isLastCard ? 'Start Coding' : 'Next'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-              child: PressableScale(
-                child: FilledButton(
-                  onPressed: _onNext,
-                  child: Text(_isLastCard ? 'Start Coding' : 'Next'),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -105,11 +106,11 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
 class _TheoryCardView extends StatelessWidget {
   const _TheoryCardView({required this.card});
 
-  final _TheoryCard card;
+  final TheoryCard card;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,7 +148,7 @@ class _TheoryCardView extends StatelessWidget {
                       const EditorDot(color: AppColors.success),
                       const Spacer(),
                       Text(
-                        'python',
+                        card.language,
                         style: AppTheme.code(fontSize: 11, color: AppColors.inkTextDim, weight: FontWeight.w600),
                       ),
                     ],

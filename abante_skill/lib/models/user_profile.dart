@@ -23,9 +23,9 @@ class UserProfile {
 }
 
 const mockProfile = UserProfile(
-  name: 'Alex Rivera',
-  username: 'alexcodes',
-  email: 'alex@example.com',
+  name: 'Adrianne',
+  username: 'adriannecodes',
+  email: 'adrianne@example.com',
   bio: "Learning Python one lesson at a time 🐍",
   streakDays: 4,
   totalXp: 860,

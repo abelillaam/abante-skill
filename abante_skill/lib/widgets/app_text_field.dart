@@ -66,6 +66,10 @@ class _AppTextFieldState extends State<AppTextField> {
           obscureText: _obscured,
           keyboardType: widget.keyboardType,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
+          // Empty (not null) autofillHints opts this field out of the
+          // platform autofill service, which otherwise paints an ugly
+          // yellow highlight/underline on password-manager-eligible fields.
+          autofillHints: const [],
           decoration: InputDecoration(
             hintText: widget.hint,
             prefixIcon: widget.prefixIcon != null

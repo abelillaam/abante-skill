@@ -2,9 +2,30 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
+import '../main_shell.dart';
+
+void _backToDashboard(BuildContext context) {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const MainShell()),
+    (route) => false,
+  );
+}
 
 class OutOfHeartsScreen extends StatelessWidget {
-  const OutOfHeartsScreen({super.key});
+  const OutOfHeartsScreen({super.key, this.nextHeartIn});
+
+  /// Time remaining until the next heart regenerates, or null if unknown.
+  final Duration? nextHeartIn;
+
+  String get _nextHeartLabel {
+    final d = nextHeartIn;
+    if (d == null) return 'Refilling soon';
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    if (hours <= 0 && minutes <= 0) return 'Refilling now';
+    if (hours <= 0) return 'Next heart in ${minutes}m';
+    return 'Next heart in ${hours}h ${minutes}m';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +70,7 @@ class OutOfHeartsScreen extends StatelessWidget {
                     const Icon(Icons.schedule_rounded, size: 18, color: AppColors.textSecondary),
                     const SizedBox(width: 8),
                     Text(
-                      'Next heart in 2h 14m',
+                      _nextHeartLabel,
                       style: AppTheme.stat(fontSize: 13, color: AppColors.textSecondary, weight: FontWeight.w600),
                     ),
                   ],
@@ -59,7 +80,7 @@ class OutOfHeartsScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => _backToDashboard(context),
                   child: const Text('Review Previous Lessons'),
                 ),
               ),
@@ -67,7 +88,7 @@ class OutOfHeartsScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => _backToDashboard(context),
                   child: const Text('Back to Dashboard'),
                 ),
               ),

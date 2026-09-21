@@ -11,6 +11,10 @@ class Lesson {
     required this.status,
     required this.totalModules,
     this.completedModules = 0,
+    this.exerciseInstruction,
+    this.exerciseStarterCode,
+    this.exerciseLanguage,
+    this.exerciseFileName,
   });
 
   final String id;
@@ -20,6 +24,38 @@ class Lesson {
   final LessonStatus status;
   final int totalModules;
   final int completedModules;
+
+  /// The AI-generated coding exercise for this lesson, cached here once
+  /// generated so reopening the lesson shows the same exercise instead of
+  /// generating a new one each time. Null until first generated.
+  final String? exerciseInstruction;
+  final String? exerciseStarterCode;
+  final String? exerciseLanguage;
+  final String? exerciseFileName;
+
+  bool get hasCachedExercise => exerciseInstruction != null;
+
+  Lesson copyWith({
+    LessonStatus? status,
+    int? completedModules,
+    String? exerciseInstruction,
+    String? exerciseStarterCode,
+    String? exerciseLanguage,
+    String? exerciseFileName,
+  }) =>
+      Lesson(
+        id: id,
+        title: title,
+        summary: summary,
+        icon: icon,
+        status: status ?? this.status,
+        totalModules: totalModules,
+        completedModules: completedModules ?? this.completedModules,
+        exerciseInstruction: exerciseInstruction ?? this.exerciseInstruction,
+        exerciseStarterCode: exerciseStarterCode ?? this.exerciseStarterCode,
+        exerciseLanguage: exerciseLanguage ?? this.exerciseLanguage,
+        exerciseFileName: exerciseFileName ?? this.exerciseFileName,
+      );
 }
 
 class LessonUnit {
@@ -40,6 +76,14 @@ class LessonUnit {
   /// A unit unlocks once every lesson in it is no longer locked — i.e. the
   /// previous unit finished and handed off an active lesson into this one.
   bool get isLocked => lessons.every((lesson) => lesson.status == LessonStatus.locked);
+
+  LessonUnit copyWith({List<Lesson>? lessons}) => LessonUnit(
+        id: id,
+        title: title,
+        subtitle: subtitle,
+        icon: icon,
+        lessons: lessons ?? this.lessons,
+      );
 }
 
 const mockUnits = [

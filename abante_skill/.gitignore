@@ -1,3 +1,6 @@
+# Local API keys (see lib/config/groq_config.example.dart)
+lib/config/groq_config.dart
+
 # Miscellaneous
 *.class
 *.log

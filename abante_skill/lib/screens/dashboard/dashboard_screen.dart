@@ -1,6 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/lesson.dart';
+import '../../services/curriculum_repository.dart';
+import '../../services/hearts_repository.dart';
+import '../../services/streak_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_counter.dart';
@@ -9,13 +13,41 @@ import '../../widgets/pressable_scale.dart';
 import '../../widgets/wave_clipper.dart';
 import '../lesson/lesson_overview_sheet.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await Future.wait([HeartsRepository.load(user), StreakRepository.load(user)]);
+    if (mounted) setState(() {});
+  }
+
+  /// Opens a lesson and refreshes once the whole lesson flow (overview
+  /// sheet + briefing + workspace) is done, since this screen stays mounted
+  /// under the bottom nav and won't otherwise pick up completed/unlocked
+  /// lessons, spent hearts, or practice time on its own.
+  Future<void> _openLesson(Lesson lesson) async {
+    await showLessonOverviewSheet(context, lesson);
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final units = CurriculumRepository.units;
     Lesson? activeLesson;
-    for (final unit in mockUnits) {
+    for (final unit in units) {
       for (final lesson in unit.lessons) {
         if (lesson.status == LessonStatus.active) {
           activeLesson = lesson;
@@ -29,17 +61,23 @@ class DashboardScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            const _DashboardHeader(),
+            _DashboardHeader(
+              currentUnitTitle: units.isEmpty ? null : units.first.title,
+              hearts: HeartsRepository.hearts,
+              streakDays: StreakRepository.streakDays,
+              minutesDone: StreakRepository.minutesToday,
+              minutesGoal: StreakRepository.goalMinutes,
+            ),
             Expanded(
               child: ListView(
                 physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                 padding: const EdgeInsets.only(bottom: 32),
                 children: [
-                  if (activeLesson != null) _ContinueLearningCard(lesson: activeLesson),
-                  for (final unit in mockUnits) ...[
+                  if (activeLesson != null) _ContinueLearningCard(lesson: activeLesson, onTap: _openLesson),
+                  for (final unit in units) ...[
                     _UnitBanner(unit: unit),
                     const SizedBox(height: 12),
-                    for (final lesson in unit.lessons) _LessonListCard(lesson: lesson),
+                    for (final lesson in unit.lessons) _LessonListCard(lesson: lesson, onTap: _openLesson),
                     const SizedBox(height: 8),
                   ],
                 ],
@@ -53,9 +91,10 @@ class DashboardScreen extends StatelessWidget {
 }
 
 class _ContinueLearningCard extends StatelessWidget {
-  const _ContinueLearningCard({required this.lesson});
+  const _ContinueLearningCard({required this.lesson, required this.onTap});
 
   final Lesson lesson;
+  final ValueChanged<Lesson> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +108,7 @@ class _ContinueLearningCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          onTap: () => showLessonOverviewSheet(context, lesson),
+          onTap: () => onTap(lesson),
           child: Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -149,10 +188,28 @@ class _ContinueLearningCard extends StatelessWidget {
 }
 
 class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader();
+  const _DashboardHeader({
+    this.currentUnitTitle,
+    required this.hearts,
+    required this.streakDays,
+    required this.minutesDone,
+    required this.minutesGoal,
+  });
+
+  final String? currentUnitTitle;
+  final int hearts;
+  final int streakDays;
+  final int minutesDone;
+  final int minutesGoal;
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName?.trim().isNotEmpty == true
+        ? user!.displayName!.trim()
+        : (user?.email?.split('@').first ?? 'there');
+    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+
     return WaveBand(
       color: AppColors.surface,
       elevation: 6,
@@ -163,34 +220,36 @@ class _DashboardHeader extends StatelessWidget {
           children: [
             Row(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 22,
                   backgroundColor: AppColors.primary,
-                  child: Text('A', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                  child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Welcome back, Adrianne',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        'Welcome back, $displayName',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                       ),
                       Text(
-                        'Python track · Beginner',
-                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        currentUnitTitle ?? 'Ready to start learning',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
                 ),
-                const StreakBadge(days: 4),
+                StreakBadge(days: streakDays),
                 const SizedBox(width: 8),
-                const HeartsBadge(hearts: 3),
+                HeartsBadge(hearts: hearts),
               ],
             ),
             const SizedBox(height: 16),
-            const _DailyGoalBar(minutesDone: 6, minutesGoal: 15),
+            _DailyGoalBar(minutesDone: minutesDone, minutesGoal: minutesGoal),
           ],
         ),
       ),
@@ -328,9 +387,10 @@ class _UnitBanner extends StatelessWidget {
 }
 
 class _LessonListCard extends StatelessWidget {
-  const _LessonListCard({required this.lesson});
+  const _LessonListCard({required this.lesson, required this.onTap});
 
   final Lesson lesson;
+  final ValueChanged<Lesson> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -353,7 +413,7 @@ class _LessonListCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: isLocked ? null : () => showLessonOverviewSheet(context, lesson),
+          onTap: isLocked ? null : () => onTap(lesson),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(

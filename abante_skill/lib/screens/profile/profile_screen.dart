@@ -1,6 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/user_profile.dart';
+import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_counter.dart';
@@ -18,10 +20,24 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  UserProfile _profile = mockProfile;
+  final _authUser = FirebaseAuth.instance.currentUser;
+  late UserProfile _profile = _authUser != null ? UserRepository.defaultProfileFor(_authUser) : mockProfile;
   bool _notifications = true;
   bool _sound = true;
   bool _darkMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedProfile();
+  }
+
+  Future<void> _loadSavedProfile() async {
+    final user = _authUser;
+    if (user == null) return;
+    final saved = await UserRepository.loadProfile(user);
+    if (mounted && saved != null) setState(() => _profile = saved);
+  }
 
   Future<void> _openEditProfile() async {
     final updated = await Navigator.of(context).push<UserProfile>(
@@ -29,6 +45,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (updated != null) {
       setState(() => _profile = updated);
+      final user = _authUser;
+      if (user != null) {
+        try {
+          await UserRepository.saveProfile(user, updated);
+        } catch (_) {
+          // Local update already applied; a sync hiccup shouldn't block the UI.
+        }
+      }
     }
   }
 
@@ -45,8 +69,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(dialogContext).pop();
+              await FirebaseAuth.instance.signOut();
+              if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const SplashScreen()),
                 (route) => false,
@@ -57,6 +83,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  void _confirmDeleteAccount() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete account?'),
+        content: const Text(
+          'This permanently deletes your profile, curriculum, and progress. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _deleteAccount();
+            },
+            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount() async {
+    final user = _authUser;
+    if (user == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await UserRepository.deleteUser(user.uid);
+      await user.delete();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const SplashScreen()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close loading dialog
+      final message = e.code == 'requires-recent-login'
+          ? 'For security, please log out and log back in, then try deleting your account again.'
+          : e.message ?? 'Could not delete account. Try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close loading dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete account. Try again.')),
+      );
+    }
   }
 
   @override
@@ -160,6 +246,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
+            ),
+            const SizedBox(height: 12),
+            PressableScale(
+              child: Material(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(18),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: _confirmDeleteAccount,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(color: AppColors.textPrimary.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 6)),
+                      ],
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.delete_forever_rounded, color: AppColors.error, size: 20),
+                        SizedBox(width: 12),
+                        Text(
+                          'Delete Account',
+                          style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),

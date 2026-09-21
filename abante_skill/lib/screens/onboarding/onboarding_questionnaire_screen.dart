@@ -70,8 +70,17 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
   void _onContinue() {
     if (!_canContinue) return;
     if (_isLastPage) {
+      final track = _questions[0].options[_answers[0]!].title;
+      final level = _questions[1].options[_answers[1]!].title;
+      final dailyGoal = _questions[2].options[_answers[2]!].title;
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SignupScreen()),
+        MaterialPageRoute(
+          builder: (_) => SignupScreen(
+            onboardingTrack: track,
+            onboardingLevel: level,
+            onboardingDailyGoal: dailyGoal,
+          ),
+        ),
       );
       return;
     }

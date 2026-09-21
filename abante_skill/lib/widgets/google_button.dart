@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
 class GoogleSignInButton extends StatelessWidget {
-  const GoogleSignInButton({super.key, required this.onPressed, this.label = 'Continue with Google'});
+  const GoogleSignInButton({
+    super.key,
+    required this.onPressed,
+    this.label = 'Continue with Google',
+    this.isLoading = false,
+  });
 
   final VoidCallback onPressed;
   final String label;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -14,19 +20,25 @@ class GoogleSignInButton extends StatelessWidget {
       width: double.infinity,
       height: 52,
       child: OutlinedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
           side: const BorderSide(color: AppColors.border, width: 1.5),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const _GoogleLogo(),
-            const SizedBox(width: 12),
-            Text(label),
-          ],
-        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const _GoogleLogo(),
+                  const SizedBox(width: 12),
+                  Text(label),
+                ],
+              ),
       ),
     );
   }
