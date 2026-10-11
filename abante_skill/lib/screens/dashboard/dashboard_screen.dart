@@ -2,14 +2,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/lesson.dart';
+import '../../models/user_profile.dart';
 import '../../services/curriculum_repository.dart';
 import '../../services/hearts_repository.dart';
+import '../../services/session_service.dart';
 import '../../services/streak_repository.dart';
+import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_counter.dart';
 import '../../widgets/badges.dart';
 import '../../widgets/pressable_scale.dart';
+import '../../widgets/profile_avatar.dart';
 import '../../widgets/wave_clipper.dart';
 import '../lesson/lesson_overview_sheet.dart';
 
@@ -21,17 +25,39 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  UserProfile? _profile;
+
   @override
   void initState() {
     super.initState();
+    SessionService.refreshTick.addListener(_loadStats);
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    SessionService.refreshTick.removeListener(_loadStats);
+    super.dispose();
   }
 
   Future<void> _loadStats() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    await Future.wait([HeartsRepository.load(user), StreakRepository.load(user)]);
-    if (mounted) setState(() {});
+    final results = await Future.wait([
+      UserRepository.loadProfile(user),
+      HeartsRepository.load(user),
+      StreakRepository.load(user),
+    ]);
+    if (!mounted) return;
+    setState(() => _profile = results.first as UserProfile? ?? _profile);
+  }
+
+  /// The unit holding the user's next lesson (not just the first unit).
+  String? _currentUnitTitle(List<LessonUnit> units) {
+    for (final unit in units) {
+      if (unit.lessons.any((l) => l.status != LessonStatus.completed)) return unit.title;
+    }
+    return units.isEmpty ? null : 'All units complete!';
   }
 
   /// Opens a lesson and refreshes once the whole lesson flow (overview
@@ -62,7 +88,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           children: [
             _DashboardHeader(
-              currentUnitTitle: units.isEmpty ? null : units.first.title,
+              profile: _profile,
+              currentUnitTitle: _currentUnitTitle(units),
               hearts: HeartsRepository.hearts,
               streakDays: StreakRepository.streakDays,
               minutesDone: StreakRepository.minutesToday,
@@ -136,7 +163,7 @@ class _ContinueLearningCard extends StatelessWidget {
                           value: progress == 0 ? 1 : progress,
                           strokeWidth: 3,
                           backgroundColor: Colors.transparent,
-                          valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                          valueColor: AlwaysStoppedAnimation(AppColors.primary),
                         ),
                       ),
                       Icon(lesson.icon, color: AppColors.primary, size: 24),
@@ -166,7 +193,7 @@ class _ContinueLearningCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${lesson.completedModules}/${lesson.totalModules} modules · keep going!',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -174,8 +201,8 @@ class _ContinueLearningCard extends StatelessWidget {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                  child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                  decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                  child: Icon(Icons.arrow_forward_rounded, color: AppColors.onPrimary, size: 20),
                 ),
               ],
             ),
@@ -189,6 +216,7 @@ class _ContinueLearningCard extends StatelessWidget {
 
 class _DashboardHeader extends StatelessWidget {
   const _DashboardHeader({
+    this.profile,
     this.currentUnitTitle,
     required this.hearts,
     required this.streakDays,
@@ -196,6 +224,7 @@ class _DashboardHeader extends StatelessWidget {
     required this.minutesGoal,
   });
 
+  final UserProfile? profile;
   final String? currentUnitTitle;
   final int hearts;
   final int streakDays;
@@ -205,9 +234,10 @@ class _DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final displayName = user?.displayName?.trim().isNotEmpty == true
+    final fallbackName = user?.displayName?.trim().isNotEmpty == true
         ? user!.displayName!.trim()
         : (user?.email?.split('@').first ?? 'there');
+    final displayName = profile?.name.trim().isNotEmpty == true ? profile!.name.trim() : fallbackName;
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
 
     return WaveBand(
@@ -220,11 +250,7 @@ class _DashboardHeader extends StatelessWidget {
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: AppColors.primary,
-                  child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                ),
+                ProfileAvatar(initial: initial, photoBase64: profile?.photoBase64),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -233,12 +259,12 @@ class _DashboardHeader extends StatelessWidget {
                       Text(
                         'Welcome back, $displayName',
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                       ),
                       Text(
                         currentUnitTitle ?? 'Ready to start learning',
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -265,14 +291,14 @@ class _DailyGoalBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = (minutesDone / minutesGoal).clamp(0.0, 1.0);
+    final progress = minutesGoal <= 0 ? 0.0 : (minutesDone / minutesGoal).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Row(
+            Row(
               children: [
                 Icon(Icons.track_changes_rounded, size: 15, color: AppColors.textSecondary),
                 SizedBox(width: 6),
@@ -296,7 +322,7 @@ class _DailyGoalBar extends StatelessWidget {
             value: progress,
             minHeight: 8,
             backgroundColor: AppColors.background,
-            valueColor: const AlwaysStoppedAnimation(AppColors.accent),
+            valueColor: AlwaysStoppedAnimation(AppColors.accent),
           ),
         ),
       ],
@@ -319,7 +345,7 @@ class _UnitBanner extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: locked
             ? null
-            : const LinearGradient(
+            : LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [AppColors.primary, AppColors.primaryDark],
@@ -342,7 +368,7 @@ class _UnitBanner extends StatelessWidget {
                 Text(
                   unit.subtitle.toUpperCase(),
                   style: TextStyle(
-                    color: locked ? AppColors.textSecondary : Colors.white70,
+                    color: locked ? AppColors.textSecondary : AppColors.onPrimary.withValues(alpha: 0.75),
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1,
@@ -352,14 +378,14 @@ class _UnitBanner extends StatelessWidget {
                 Text(
                   unit.title,
                   style: AppTheme.headline(
-                    color: locked ? AppColors.textSecondary : Colors.white,
+                    color: locked ? AppColors.textSecondary : AppColors.onPrimary,
                     fontSize: 19,
                     weight: FontWeight.w800,
                   ),
                 ),
                 if (locked) ...[
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Finish the unit above to unlock',
                     style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
@@ -371,12 +397,12 @@ class _UnitBanner extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: locked ? AppColors.background : Colors.white.withValues(alpha: 0.16),
+              color: locked ? AppColors.background : AppColors.onPrimary.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               locked ? Icons.lock_rounded : unit.icon,
-              color: locked ? AppColors.locked : Colors.white,
+              color: locked ? AppColors.locked : AppColors.onPrimary,
               size: 22,
             ),
           ),
@@ -403,7 +429,7 @@ class _LessonListCard extends StatelessWidget {
       LessonStatus.active => AppColors.primary,
       LessonStatus.locked => AppColors.background,
     };
-    final iconColor = isLocked ? AppColors.locked : Colors.white;
+    final iconColor = isLocked ? AppColors.locked : AppColors.onPrimary;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -456,7 +482,7 @@ class _LessonListCard extends StatelessWidget {
                         lesson.summary,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.3),
+                        style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.3),
                       ),
                       if (isActive) ...[
                         const SizedBox(height: 8),
@@ -466,7 +492,7 @@ class _LessonListCard extends StatelessWidget {
                             value: lesson.totalModules == 0 ? 0 : lesson.completedModules / lesson.totalModules,
                             minHeight: 6,
                             backgroundColor: AppColors.background,
-                            valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                            valueColor: AlwaysStoppedAnimation(AppColors.primary),
                           ),
                         ),
                       ],
@@ -475,18 +501,24 @@ class _LessonListCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (isCompleted)
-                  const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 22)
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_rounded, color: AppColors.success, size: 22),
+                      Text('Review', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.success)),
+                    ],
+                  )
                 else if (isActive)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
-                    child: const Text(
+                    child: Text(
                       'Start',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                      style: TextStyle(color: AppColors.onPrimary, fontWeight: FontWeight.w700, fontSize: 12),
                     ),
                   )
                 else
-                  const Icon(Icons.lock_outline_rounded, color: AppColors.locked, size: 20),
+                  Icon(Icons.lock_outline_rounded, color: AppColors.locked, size: 20),
               ],
             ),
           ),

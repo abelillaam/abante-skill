@@ -42,7 +42,7 @@ class _StreakBadgeState extends State<StreakBadge> with SingleTickerProviderStat
         children: [
           FadeTransition(
             opacity: _glow,
-            child: const Icon(Icons.local_fire_department_rounded, color: AppColors.streak, size: 17),
+            child: Icon(Icons.local_fire_department_rounded, color: AppColors.streak, size: 17),
           ),
           const SizedBox(width: 6),
           AnimatedCounter(value: widget.days, style: AppTheme.stat(fontSize: 14, color: Colors.white)),

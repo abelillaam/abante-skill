@@ -7,13 +7,14 @@ import 'animated_counter.dart';
 const _dayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 class StreakCard extends StatefulWidget {
-  const StreakCard({super.key, required this.days, required this.weekCompleted, this.todayIndex = 3});
+  const StreakCard({super.key, required this.days, required this.weekCompleted, this.todayIndex});
 
   final int days;
 
   /// 7 booleans, Monday first, marking which days this week hit their goal.
   final List<bool> weekCompleted;
-  final int todayIndex;
+  /// Monday-first index of today; defaults to the real current day.
+  final int? todayIndex;
 
   @override
   State<StreakCard> createState() => _StreakCardState();
@@ -43,7 +44,7 @@ class _StreakCardState extends State<StreakCard> with SingleTickerProviderStateM
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [AppColors.streak, AppColors.streakDeep],
@@ -88,7 +89,7 @@ class _StreakCardState extends State<StreakCard> with SingleTickerProviderStateM
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'On fire!',
+                  widget.days == 0 ? 'Start today!' : (widget.days >= 7 ? 'On fire!' : 'Keep going!'),
                   style: AppTheme.headline(fontSize: 11, weight: FontWeight.w800, color: Colors.white),
                 ),
               ),
@@ -99,7 +100,7 @@ class _StreakCardState extends State<StreakCard> with SingleTickerProviderStateM
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(7, (i) {
               final done = widget.weekCompleted[i];
-              final isToday = i == widget.todayIndex;
+              final isToday = i == (widget.todayIndex ?? DateTime.now().weekday - 1);
               return Column(
                 children: [
                   Text(
@@ -117,7 +118,7 @@ class _StreakCardState extends State<StreakCard> with SingleTickerProviderStateM
                       border: isToday ? Border.all(color: Colors.white, width: 2) : null,
                     ),
                     child: done
-                        ? const Icon(Icons.local_fire_department_rounded, size: 16, color: AppColors.streakDeep)
+                        ? Icon(Icons.local_fire_department_rounded, size: 16, color: AppColors.streakDeep)
                         : null,
                   ),
                 ],

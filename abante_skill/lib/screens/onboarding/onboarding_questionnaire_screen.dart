@@ -1,10 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/session_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/progress_dots.dart';
+import '../../widgets/curriculum_generating_overlay.dart';
 import '../../widgets/selectable_option_card.dart';
 import '../auth/signup_screen.dart';
+import '../main_shell.dart';
+import '../splash_screen.dart';
 
 class _Question {
   const _Question({required this.title, required this.subtitle, required this.options});
@@ -53,7 +58,12 @@ const _questions = [
 ];
 
 class OnboardingQuestionnaireScreen extends StatefulWidget {
-  const OnboardingQuestionnaireScreen({super.key});
+  const OnboardingQuestionnaireScreen({super.key, this.alreadySignedIn = false});
+
+  /// True when someone is already signed in but has no curriculum yet (e.g.
+  /// their first "Continue with Google" was from the login screen). Then the
+  /// last step builds their curriculum directly instead of going to sign-up.
+  final bool alreadySignedIn;
 
   @override
   State<OnboardingQuestionnaireScreen> createState() => _OnboardingQuestionnaireScreenState();
@@ -66,6 +76,25 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
 
   bool get _isLastPage => _pageIndex == _questions.length - 1;
   bool get _canContinue => _answers[_pageIndex] != null;
+  bool _isGenerating = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _buildCurriculumForSignedInUser(String track, String level, String dailyGoal) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _isGenerating = true);
+    await SessionService.createCurriculum(user, track: track, level: level, dailyGoal: dailyGoal);
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainShell()),
+      (route) => false,
+    );
+  }
 
   void _onContinue() {
     if (!_canContinue) return;
@@ -73,6 +102,10 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
       final track = _questions[0].options[_answers[0]!].title;
       final level = _questions[1].options[_answers[1]!].title;
       final dailyGoal = _questions[2].options[_answers[2]!].title;
+      if (widget.alreadySignedIn) {
+        _buildCurriculumForSignedInUser(track, level, dailyGoal);
+        return;
+      }
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => SignupScreen(
@@ -87,8 +120,18 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
     _pageController.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
-  void _onBack() {
+  Future<void> _onBack() async {
     if (_pageIndex == 0) {
+      if (widget.alreadySignedIn) {
+        // Nothing behind this screen — backing out means signing out.
+        await SessionService.signOut();
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+        );
+        return;
+      }
       Navigator.of(context).pop();
       return;
     }
@@ -97,6 +140,7 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
 
   @override
   Widget build(BuildContext context) {
+    if (_isGenerating) return const CurriculumGeneratingOverlay();
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -129,7 +173,7 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
                         const SizedBox(height: 8),
                         Text(
                           question.subtitle,
-                          style: const TextStyle(fontSize: 15, color: AppColors.textSecondary),
+                          style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 28),
                         Expanded(

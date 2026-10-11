@@ -7,9 +7,12 @@ import '../../models/lesson.dart';
 import '../../models/practice_language.dart';
 import '../../services/ai_code_runner_service.dart';
 import '../../services/ai_tutor_service.dart';
+import '../../services/app_settings.dart';
+import '../../services/certificate_repository.dart';
 import '../../services/curriculum_repository.dart';
 import '../../services/hearts_repository.dart';
 import '../../services/lesson_exercise_service.dart';
+import '../../services/session_service.dart';
 import '../../services/streak_repository.dart';
 import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
@@ -18,6 +21,7 @@ import '../../widgets/badges.dart';
 import '../../widgets/editor_dot.dart';
 import '../../widgets/pressable_scale.dart';
 import '../main_shell.dart';
+import 'certificate_dialog.dart';
 import 'lesson_success_dialog.dart';
 import 'out_of_hearts_screen.dart';
 
@@ -50,6 +54,10 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
   bool _isLoadingExercise = false;
   LessonExercise? _exercise;
   final _sessionStopwatch = Stopwatch()..start();
+
+  /// Replaying an already-finished lesson: no hearts at stake, no repeat
+  /// XP, and passing earns a heart back.
+  late final bool _isReview = !widget.isSandbox && CurriculumRepository.isCompleted(widget.lesson!.id);
 
   String get _instruction => widget.isSandbox ? _sandboxInstruction : (_exercise?.instruction ?? '');
   String get _taskLanguageLabel => _exercise?.language ?? 'python';
@@ -162,24 +170,46 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
       if (!mounted) return;
       final success = result.correct;
       final user = FirebaseAuth.instance.currentUser;
-      if (!widget.isSandbox && !success && user != null) {
+      if (!widget.isSandbox && !success && !_isReview && user != null) {
         await HeartsRepository.loseHeart(user);
       }
+      if (!widget.isSandbox) unawaited(success ? Sfx.correct() : Sfx.wrong());
       if (!mounted) return;
       setState(() {
         _isRunning = false;
         _output = result.output.trim().isEmpty ? '(no output)' : result.output.trim();
         _lastRunSucceeded = success;
-        if (!widget.isSandbox && !success) _hearts = HeartsRepository.hearts;
+        if (!widget.isSandbox && !success && !_isReview) _hearts = HeartsRepository.hearts;
       });
 
       if (widget.isSandbox) return;
 
       if (success) {
-        _saveLessonProgress();
+        final outcome = await _saveLessonProgress();
+        if (!mounted) return;
+        setState(() => _hearts = HeartsRepository.hearts);
+        SessionService.requestRefresh();
+        final earnedCertificate = outcome.certificate;
         showLessonSuccessDialog(
           context,
-          onContinue: () {
+          xpEarned: outcome.xp,
+          isReview: _isReview,
+          heartRestored: outcome.heartRestored,
+          onContinue: () async {
+            if (earnedCertificate != null) {
+              unawaited(Sfx.celebrate());
+              final user = FirebaseAuth.instance.currentUser;
+              final displayName = user?.displayName?.trim().isNotEmpty == true
+                  ? user!.displayName!.trim()
+                  : (user?.email?.split('@').first ?? 'there');
+              await showCertificateDialog(
+                context,
+                unitTitle: earnedCertificate.unitTitle,
+                userName: displayName,
+                earnedAt: earnedCertificate.earnedAt,
+              );
+              if (!mounted) return;
+            }
             // Clears the whole lesson flow (overview sheet, briefing, this
             // screen, and this dialog) in one shot and lands on a fresh
             // Dashboard — robust regardless of how deep the stack got,
@@ -190,7 +220,7 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
             );
           },
         );
-      } else if (_hearts == 0) {
+      } else if (_hearts == 0 && !_isReview) {
         Future.delayed(const Duration(milliseconds: 400), () {
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
@@ -209,18 +239,34 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
     }
   }
 
-  Future<void> _saveLessonProgress() async {
+  Future<_LessonOutcome> _saveLessonProgress() async {
     final lesson = widget.lesson;
     final user = FirebaseAuth.instance.currentUser;
-    if (lesson == null || user == null) return;
+    if (lesson == null || user == null) return const _LessonOutcome();
 
-    if (!CurriculumRepository.markLessonCompleted(lesson.id)) return;
+    // Reviews pay out a heart instead of XP, so replaying a finished lesson
+    // can't farm XP or inflate the lessons-completed count.
+    if (_isReview) {
+      final hadRoom = HeartsRepository.hearts < HeartsRepository.maxHearts;
+      await HeartsRepository.gainHeart(user);
+      return _LessonOutcome(heartRestored: hadRoom);
+    }
+
+    if (!CurriculumRepository.markLessonCompleted(lesson.id)) return const _LessonOutcome();
+    final xp = lesson.totalModules * 10;
     try {
       await UserRepository.saveUser(user: user, curriculum: CurriculumRepository.units);
-      await UserRepository.addXp(user, lesson.totalModules * 10);
+      await UserRepository.recordLessonCompleted(user, xp);
     } catch (_) {
       // Local progress already updated; a sync hiccup shouldn't block the UI.
     }
+
+    for (final unit in CurriculumRepository.units) {
+      if (unit.lessons.any((l) => l.id == lesson.id)) {
+        return _LessonOutcome(xp: xp, certificate: await CertificateRepository.awardIfUnitComplete(user, unit));
+      }
+    }
+    return _LessonOutcome(xp: xp);
   }
 
   void _onAskAiTutor() {
@@ -251,10 +297,10 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
                   (route) => false,
                 ),
               ),
-        title: Text(widget.isSandbox ? 'Sandbox' : widget.lesson!.title),
+        title: Text(widget.isSandbox ? 'Sandbox' : (_isReview ? 'Review · ${widget.lesson!.title}' : widget.lesson!.title)),
         centerTitle: true,
         actions: [
-          if (!widget.isSandbox)
+          if (!widget.isSandbox && !_isReview)
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(child: HeartsBadge(hearts: _hearts)),
@@ -278,13 +324,13 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
+                  Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: SingleChildScrollView(
                       child: Text(
                         _instruction,
-                        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.4, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.4, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -309,11 +355,11 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       child: Row(
                         children: [
-                          const EditorDot(color: AppColors.error),
+                          EditorDot(color: AppColors.error),
                           const SizedBox(width: 6),
-                          const EditorDot(color: AppColors.streak),
+                          EditorDot(color: AppColors.streak),
                           const SizedBox(width: 6),
-                          const EditorDot(color: AppColors.success),
+                          EditorDot(color: AppColors.success),
                           const Spacer(),
                           if (widget.isSandbox)
                             _LanguagePicker(language: _language, onChanged: _onLanguageChanged)
@@ -334,7 +380,7 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
                           maxLines: null,
                           expands: true,
                           textAlignVertical: TextAlignVertical.top,
-                          cursorColor: Colors.white,
+                          cursorColor: AppColors.inkText,
                           style: AppTheme.code(),
                           decoration: const InputDecoration(
                             border: InputBorder.none,
@@ -357,7 +403,7 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
                       isRunning: _isRunning,
                       runFailed: _runFailed,
                       success: _lastRunSucceeded,
-                      hearts: _hearts,
+                      hearts: _isReview ? 1 : _hearts,
                       output: _output,
                       onRetry: _onRunCode,
                     )
@@ -382,10 +428,10 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
                       child: FilledButton.icon(
                         onPressed: _isRunning ? null : _onRunCode,
                         icon: _isRunning
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
                               )
                             : const Icon(Icons.play_arrow_rounded, size: 20),
                         label: Text(_isRunning ? 'Running...' : 'Run Code'),
@@ -400,6 +446,14 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
       ),
     );
   }
+}
+
+class _LessonOutcome {
+  const _LessonOutcome({this.xp = 0, this.certificate, this.heartRestored = false});
+
+  final int xp;
+  final EarnedCertificate? certificate;
+  final bool heartRestored;
 }
 
 enum _HintState { loading, error, loaded }
@@ -448,7 +502,7 @@ class _AiTutorSheetState extends State<_AiTutorSheet> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -458,7 +512,7 @@ class _AiTutorSheetState extends State<_AiTutorSheet> {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome_rounded, color: AppColors.primary),
+              Icon(Icons.auto_awesome_rounded, color: AppColors.primary),
               const SizedBox(width: 10),
               Text(
                 'AI Tutor Hint',
@@ -484,7 +538,7 @@ class _AiTutorSheetState extends State<_AiTutorSheet> {
   Widget _buildContent() {
     switch (_state) {
       case _HintState.loading:
-        return const Padding(
+        return Padding(
           padding: EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
@@ -497,7 +551,7 @@ class _AiTutorSheetState extends State<_AiTutorSheet> {
       case _HintState.error:
         return Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 "Couldn't reach the AI tutor right now.",
                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
@@ -509,7 +563,7 @@ class _AiTutorSheetState extends State<_AiTutorSheet> {
       case _HintState.loaded:
         return Text(
           _hint,
-          style: const TextStyle(fontSize: 15, color: AppColors.textSecondary, height: 1.5),
+          style: TextStyle(fontSize: 15, color: AppColors.textSecondary, height: 1.5),
         );
     }
   }
@@ -536,7 +590,7 @@ class _LanguagePicker extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (lang == language) const Icon(Icons.check_rounded, size: 16, color: AppColors.primary),
+                if (lang == language) Icon(Icons.check_rounded, size: 16, color: AppColors.primary),
                 if (lang == language) const SizedBox(width: 6),
                 Text(lang.label),
               ],
@@ -551,7 +605,7 @@ class _LanguagePicker extends StatelessWidget {
             style: AppTheme.code(fontSize: 11, color: AppColors.inkTextDim, weight: FontWeight.w600),
           ),
           const SizedBox(width: 4),
-          const Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppColors.inkTextDim),
+          Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppColors.inkTextDim),
         ],
       ),
     );
@@ -588,7 +642,7 @@ class _ConsolePanel extends StatelessWidget {
           color: AppColors.textSecondary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Row(
+        child: Row(
           children: [
             SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
             SizedBox(width: 10),
@@ -610,9 +664,9 @@ class _ConsolePanel extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.wifi_off_rounded, color: AppColors.error, size: 20),
+            Icon(Icons.wifi_off_rounded, color: AppColors.error, size: 20),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
                 "Couldn't reach the AI to run this.",
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
@@ -663,7 +717,7 @@ class _ConsolePanel extends StatelessWidget {
                               : hearts == 0
                                   ? "You're out of hearts — heading back to review."
                                   : 'The AI judged this against the task instructions — check the output below and try again.',
-                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
                     ),
                   ],
                 ),

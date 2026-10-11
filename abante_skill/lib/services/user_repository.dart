@@ -68,26 +68,24 @@ class UserRepository {
     await ref.set(data, SetOptions(merge: true));
   }
 
-  /// Persists profile edits (name/username/bio/stats) made from the Edit
-  /// Profile screen.
+  /// Persists the fields editable from the Edit Profile screen. Stats
+  /// (XP, streak, lessons) are deliberately left out: they're updated
+  /// atomically elsewhere, and writing a possibly-stale copy here would
+  /// erase progress made since the profile was loaded.
   static Future<void> saveProfile(User user, UserProfile profile) async {
     await _users.doc(user.uid).set({
       'name': profile.name,
       'username': profile.username,
-      'email': profile.email,
       'bio': profile.bio,
-      'streakDays': profile.streakDays,
-      'totalXp': profile.totalXp,
-      'lessonsCompleted': profile.lessonsCompleted,
-      'weekCompleted': profile.weekCompleted,
+      'photo': profile.photoBase64 ?? FieldValue.delete(),
     }, SetOptions(merge: true));
   }
 
-  /// Atomically adds [amount] XP to [user]'s profile, e.g. after completing
-  /// a lesson.
-  static Future<void> addXp(User user, int amount) async {
+  /// Atomically credits a finished lesson: [xp] XP and one more lesson done.
+  static Future<void> recordLessonCompleted(User user, int xp) async {
     await _users.doc(user.uid).set({
-      'totalXp': FieldValue.increment(amount),
+      'totalXp': FieldValue.increment(xp),
+      'lessonsCompleted': FieldValue.increment(1),
     }, SetOptions(merge: true));
   }
 
@@ -106,6 +104,7 @@ class UserRepository {
         totalXp: (data['totalXp'] as num?)?.toInt() ?? 0,
         lessonsCompleted: (data['lessonsCompleted'] as num?)?.toInt() ?? 0,
         weekCompleted: (data['weekCompleted'] as List<dynamic>?)?.cast<bool>() ?? List.filled(7, false),
+        photoBase64: data['photo'] as String?,
       );
     } catch (_) {
       return null;
@@ -128,13 +127,20 @@ class UserRepository {
   /// couldn't be reached).
   static Future<List<LessonUnit>?> loadCurriculum(String uid) async {
     try {
-      final doc = await _users.doc(uid).get();
-      final rawUnits = doc.data()?['curriculum'] as List<dynamic>?;
-      if (rawUnits == null || rawUnits.isEmpty) return null;
-      return rawUnits.map((u) => _unitFromMap(u as Map<String, dynamic>)).toList();
+      return await fetchCurriculum(uid);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Like [loadCurriculum], but throws if Firestore can't be reached instead
+  /// of returning null — so callers never mistake "offline" for "no saved
+  /// progress" and overwrite an existing account with a fresh curriculum.
+  static Future<List<LessonUnit>?> fetchCurriculum(String uid) async {
+    final doc = await _users.doc(uid).get();
+    final rawUnits = doc.data()?['curriculum'] as List<dynamic>?;
+    if (rawUnits == null || rawUnits.isEmpty) return null;
+    return rawUnits.map((u) => _unitFromMap(u as Map<String, dynamic>)).toList();
   }
 
   static Map<String, dynamic> _unitToMap(LessonUnit unit) => {
@@ -167,6 +173,7 @@ class UserRepository {
         'exerciseStarterCode': ?lesson.exerciseStarterCode,
         'exerciseLanguage': ?lesson.exerciseLanguage,
         'exerciseFileName': ?lesson.exerciseFileName,
+        'theoryCards': ?lesson.theoryCards,
       };
 
   static Lesson _lessonFromMap(Map<String, dynamic> map) => Lesson(
@@ -181,5 +188,8 @@ class UserRepository {
         exerciseStarterCode: map['exerciseStarterCode'] as String?,
         exerciseLanguage: map['exerciseLanguage'] as String?,
         exerciseFileName: map['exerciseFileName'] as String?,
+        theoryCards: (map['theoryCards'] as List<dynamic>?)
+            ?.map((c) => (c as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String)))
+            .toList(),
       );
 }

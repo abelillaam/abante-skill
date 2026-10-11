@@ -46,7 +46,7 @@ class SelectableOptionCard extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  color: selected ? Colors.white : AppColors.textSecondary,
+                  color: selected ? AppColors.onPrimary : AppColors.textSecondary,
                   size: 22,
                 ),
               ),
@@ -58,7 +58,7 @@ class SelectableOptionCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
@@ -68,7 +68,7 @@ class SelectableOptionCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle!,
-                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                     ),
                   ],
                 ],
@@ -87,7 +87,7 @@ class SelectableOptionCard extends StatelessWidget {
                 ),
               ),
               child: selected
-                  ? const Icon(Icons.check, size: 14, color: Colors.white)
+                  ? Icon(Icons.check, size: 14, color: AppColors.onPrimary)
                   : null,
             ),
           ],

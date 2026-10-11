@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/lesson.dart';
 import '../../services/curriculum_repository.dart';
 import '../../services/lesson_content_service.dart';
+import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/editor_dot.dart';
@@ -34,6 +36,24 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
   }
 
   Future<void> _load() async {
+    // Reuse the cached cards if this lesson already has them, so reopening
+    // the briefing shows the same content instead of new AI-regenerated one.
+    final cachedCards = widget.lesson.theoryCards;
+    if (cachedCards != null && cachedCards.isNotEmpty) {
+      setState(() {
+        _cards = cachedCards
+            .map((c) => TheoryCard(
+                  heading: c['heading'] ?? '',
+                  analogy: c['analogy'] ?? '',
+                  snippet: c['snippet'] ?? '',
+                  language: c['language'] ?? 'code',
+                ))
+            .toList();
+        _isLoading = false;
+      });
+      return;
+    }
+
     final cards = await LessonContentService.generate(
       lessonTitle: widget.lesson.title,
       lessonSummary: widget.lesson.summary,
@@ -44,6 +64,30 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
       _cards = cards;
       _isLoading = false;
     });
+
+    // Generation failed and we got the generic placeholder cards — show
+    // them, but don't save them, so the next open retries the real thing.
+    if (identical(cards, fallbackTheoryCards)) return;
+
+    CurriculumRepository.cacheTheoryCards(
+      widget.lesson.id,
+      cards
+          .map((c) => {
+                'heading': c.heading,
+                'analogy': c.analogy,
+                'snippet': c.snippet,
+                'language': c.language,
+              })
+          .toList(),
+    );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await UserRepository.saveUser(user: user, curriculum: CurriculumRepository.units);
+      } catch (_) {
+        // Local cache already updated; a sync hiccup shouldn't block the UI.
+      }
+    }
   }
 
   void _onNext() {
@@ -122,7 +166,7 @@ class _TheoryCardView extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             card.analogy,
-            style: const TextStyle(fontSize: 16, color: AppColors.textSecondary, height: 1.5),
+            style: TextStyle(fontSize: 16, color: AppColors.textSecondary, height: 1.5),
           ),
           const SizedBox(height: 24),
           Container(
@@ -141,11 +185,11 @@ class _TheoryCardView extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Row(
                     children: [
-                      const EditorDot(color: AppColors.error),
+                      EditorDot(color: AppColors.error),
                       const SizedBox(width: 6),
-                      const EditorDot(color: AppColors.streak),
+                      EditorDot(color: AppColors.streak),
                       const SizedBox(width: 6),
-                      const EditorDot(color: AppColors.success),
+                      EditorDot(color: AppColors.success),
                       const Spacer(),
                       Text(
                         card.language,

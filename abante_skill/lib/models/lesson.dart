@@ -15,6 +15,7 @@ class Lesson {
     this.exerciseStarterCode,
     this.exerciseLanguage,
     this.exerciseFileName,
+    this.theoryCards,
   });
 
   final String id;
@@ -33,7 +34,14 @@ class Lesson {
   final String? exerciseLanguage;
   final String? exerciseFileName;
 
+  /// The AI-generated theory cards shown on the concept briefing screen,
+  /// cached here once generated for the same reason as the exercise above —
+  /// otherwise every reopen would show different (AI-regenerated) content.
+  /// Each map has keys: heading, analogy, snippet, language.
+  final List<Map<String, String>>? theoryCards;
+
   bool get hasCachedExercise => exerciseInstruction != null;
+  bool get hasCachedTheory => theoryCards != null && theoryCards!.isNotEmpty;
 
   Lesson copyWith({
     LessonStatus? status,
@@ -42,6 +50,7 @@ class Lesson {
     String? exerciseStarterCode,
     String? exerciseLanguage,
     String? exerciseFileName,
+    List<Map<String, String>>? theoryCards,
   }) =>
       Lesson(
         id: id,
@@ -55,6 +64,7 @@ class Lesson {
         exerciseStarterCode: exerciseStarterCode ?? this.exerciseStarterCode,
         exerciseLanguage: exerciseLanguage ?? this.exerciseLanguage,
         exerciseFileName: exerciseFileName ?? this.exerciseFileName,
+        theoryCards: theoryCards ?? this.theoryCards,
       );
 }
 

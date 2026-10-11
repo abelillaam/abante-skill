@@ -59,6 +59,20 @@ class HeartsRepository {
     }
   }
 
+  /// Gives back one heart (e.g. for passing a review of a finished lesson).
+  static Future<void> gainHeart(User user) async {
+    if (hearts >= maxHearts) return;
+    hearts++;
+    if (hearts >= maxHearts) nextHeartAt = null;
+    await _persist(user);
+  }
+
+  /// Forgets the signed-in user's hearts (on log out).
+  static void reset() {
+    hearts = maxHearts;
+    nextHeartAt = null;
+  }
+
   /// Time remaining until the next heart regenerates, or null if hearts are
   /// already full.
   static Duration? timeUntilNextHeart() {

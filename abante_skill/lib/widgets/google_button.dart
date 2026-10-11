@@ -23,7 +23,7 @@ class GoogleSignInButton extends StatelessWidget {
         onPressed: isLoading ? null : onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
-          side: const BorderSide(color: AppColors.border, width: 1.5),
+          side: BorderSide(color: AppColors.border, width: 1.5),
         ),
         child: isLoading
             ? const SizedBox(
@@ -49,7 +49,7 @@ class _GoogleLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    return SizedBox(
       width: 20,
       height: 20,
       child: Text(

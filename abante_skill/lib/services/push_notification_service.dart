@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'app_settings.dart';
+
 /// Handles push notification setup: permission request, FCM token storage
 /// (so a notification can be targeted at a specific user from the Firebase
 /// Console or a backend), and showing a local notification when a push
@@ -40,7 +42,7 @@ class PushNotificationService {
   /// app startup, before anyone is signed in, so it can't do this alone).
   static Future<void> saveTokenIfSignedIn() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || !AppSettings.notifications) return;
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
@@ -53,6 +55,31 @@ class PushNotificationService {
     }
   }
 
+  /// Applies the Profile screen's Notifications toggle: turning it off
+  /// detaches this device's push token from the account (so no pushes are
+  /// targeted at it) and silences local notifications; turning it back on
+  /// re-registers the token.
+  static Future<void> setEnabled(bool enabled) async {
+    await AppSettings.setNotifications(enabled);
+    if (enabled) {
+      await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+      await saveTokenIfSignedIn();
+      return;
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    try {
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+          {'fcmToken': FieldValue.delete()},
+          SetOptions(merge: true),
+        );
+      }
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {
+      // Local preference already saved; token cleanup is best-effort.
+    }
+  }
+
   static Future<void> _showForegroundNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
@@ -62,6 +89,7 @@ class PushNotificationService {
   /// Shows a local notification immediately — used for in-app events like
   /// hitting the daily goal, as opposed to a server-sent push.
   static Future<void> showLocalNotification({String? title, String? body}) async {
+    if (!AppSettings.notifications) return;
     await _localNotifications.show(
       id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
       title: title,

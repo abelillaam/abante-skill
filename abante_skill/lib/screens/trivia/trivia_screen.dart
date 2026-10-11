@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/app_settings.dart';
 import '../../services/daily_quiz_limiter.dart';
 import '../../services/trivia_service.dart';
 import '../../theme/app_colors.dart';
@@ -67,6 +68,7 @@ class _TriviaScreenState extends State<TriviaScreen> {
       if (correct) _score++;
       _remainingToday = (_remainingToday - 1).clamp(0, DailyQuizLimiter.dailyLimit);
     });
+    correct ? Sfx.correct() : Sfx.wrong();
     await DailyQuizLimiter.recordAnswer();
   }
 
@@ -107,14 +109,14 @@ class _TriviaScreenState extends State<TriviaScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.wifi_off_rounded, size: 40, color: AppColors.textSecondary),
+              Icon(Icons.wifi_off_rounded, size: 40, color: AppColors.textSecondary),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 "Couldn't load a question",
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Check your connection and try again.',
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
@@ -128,16 +130,16 @@ class _TriviaScreenState extends State<TriviaScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.emoji_events_rounded, size: 44, color: AppColors.streak),
+              Icon(Icons.emoji_events_rounded, size: 44, color: AppColors.streak),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 "That's today's 10 questions!",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 6),
               Text(
                 'Final score: $_score/$_asked · come back tomorrow for more.',
-                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -237,11 +239,11 @@ class _AnswerTile extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
               ),
             ),
-            if (state == _AnswerTileState.correct) const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 20),
-            if (state == _AnswerTileState.wrong) const Icon(Icons.cancel_rounded, color: AppColors.error, size: 20),
+            if (state == _AnswerTileState.correct) Icon(Icons.check_circle_rounded, color: AppColors.success, size: 20),
+            if (state == _AnswerTileState.wrong) Icon(Icons.cancel_rounded, color: AppColors.error, size: 20),
           ],
         ),
       ),

@@ -20,6 +20,17 @@ class StreakRepository {
   static int minutesToday = 0;
   static int goalMinutes = 15;
   static String? _lastStreakDate;
+  static String? _previousStreakDate;
+
+  /// Whether the yyyy-MM-dd [dateKey] falls in the current Monday-first week.
+  static bool _isThisWeek(String? dateKey) {
+    if (dateKey == null) return false;
+    final date = DateTime.tryParse(dateKey);
+    if (date == null) return false;
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
+    return !date.isBefore(monday);
+  }
 
   static CollectionReference<Map<String, dynamic>> get _users =>
       FirebaseFirestore.instance.collection('users');
@@ -58,6 +69,15 @@ class StreakRepository {
     minutesToday = prefs.getString(_minutesDateKey) == _today() ? (prefs.getInt(_minutesKey) ?? 0) : 0;
   }
 
+  /// Forgets the signed-in user's streak state (on log out).
+  static void reset() {
+    streakDays = 0;
+    weekCompleted = List.filled(7, false);
+    minutesToday = 0;
+    goalMinutes = 15;
+    _lastStreakDate = null;
+  }
+
   /// Adds practice minutes for today (e.g. time spent in a lesson), and
   /// credits a streak day the first time the daily goal is reached.
   static Future<void> addMinutes(User user, int minutes) async {
@@ -73,10 +93,11 @@ class StreakRepository {
     if (minutesToday < goalMinutes || _lastStreakDate == today) return;
 
     streakDays = _lastStreakDate == _yesterday() ? streakDays + 1 : 1;
+    _previousStreakDate = _lastStreakDate;
     _lastStreakDate = today;
 
     final weekdayIndex = DateTime.now().weekday - 1; // Monday-first, matches UserProfile.weekCompleted
-    if (weekdayIndex == 0) weekCompleted = List.filled(7, false);
+    if (weekdayIndex == 0 || !_isThisWeek(_previousStreakDate)) weekCompleted = List.filled(7, false);
     weekCompleted[weekdayIndex] = true;
 
     try {

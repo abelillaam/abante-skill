@@ -43,7 +43,7 @@ class OutOfHeartsScreen extends StatelessWidget {
                   color: AppColors.heart.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.heart_broken_rounded, color: AppColors.heart, size: 60),
+                child: Icon(Icons.heart_broken_rounded, color: AppColors.heart, size: 60),
               ),
               const SizedBox(height: 28),
               Text(
@@ -51,7 +51,7 @@ class OutOfHeartsScreen extends StatelessWidget {
                 style: AppTheme.headline(fontSize: 24, weight: FontWeight.w800),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Take a breather! Review earlier lessons to earn hearts back, or wait for them to refill.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15, color: AppColors.textSecondary, height: 1.5),
@@ -67,7 +67,7 @@ class OutOfHeartsScreen extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.schedule_rounded, size: 18, color: AppColors.textSecondary),
+                    Icon(Icons.schedule_rounded, size: 18, color: AppColors.textSecondary),
                     const SizedBox(width: 8),
                     Text(
                       _nextHeartLabel,

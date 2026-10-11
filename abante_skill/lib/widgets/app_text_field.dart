@@ -13,6 +13,11 @@ class AppTextField extends StatefulWidget {
     this.initialValue,
     this.maxLines = 1,
     this.controller,
+    this.errorText,
+    this.helperText,
+    this.onSubmitted,
+    this.readOnly = false,
+    this.maxLength,
   });
 
   final String label;
@@ -23,6 +28,11 @@ class AppTextField extends StatefulWidget {
   final String? initialValue;
   final int maxLines;
   final TextEditingController? controller;
+  final String? errorText;
+  final String? helperText;
+  final ValueChanged<String>? onSubmitted;
+  final bool readOnly;
+  final int? maxLength;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -54,7 +64,7 @@ class _AppTextFieldState extends State<AppTextField> {
       children: [
         Text(
           widget.label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
@@ -66,12 +76,20 @@ class _AppTextFieldState extends State<AppTextField> {
           obscureText: _obscured,
           keyboardType: widget.keyboardType,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
+          maxLength: widget.maxLength,
+          readOnly: widget.readOnly,
+          onSubmitted: widget.onSubmitted,
+          style: TextStyle(color: widget.readOnly ? AppColors.textSecondary : AppColors.textPrimary),
           // Empty (not null) autofillHints opts this field out of the
           // platform autofill service, which otherwise paints an ugly
           // yellow highlight/underline on password-manager-eligible fields.
           autofillHints: const [],
           decoration: InputDecoration(
             hintText: widget.hint,
+            errorText: widget.errorText,
+            helperText: widget.helperText,
+            helperMaxLines: 2,
+            fillColor: widget.readOnly ? AppColors.surfaceSunken : null,
             prefixIcon: widget.prefixIcon != null
                 ? Icon(widget.prefixIcon, size: 20, color: AppColors.textSecondary)
                 : null,
@@ -88,7 +106,7 @@ class _AppTextFieldState extends State<AppTextField> {
                     ),
                     onPressed: () => setState(() => _obscured = !_obscured),
                   )
-                : null,
+                : (widget.readOnly ? Icon(Icons.lock_outline_rounded, size: 18, color: AppColors.textSecondary) : null),
           ),
         ),
       ],

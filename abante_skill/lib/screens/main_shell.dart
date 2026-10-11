@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/session_service.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'lesson/ide_workspace_screen.dart';
 import 'profile/profile_screen.dart';
@@ -15,6 +16,13 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
+  void _onDestinationSelected(int index) {
+    setState(() => _index = index);
+    // Tabs stay alive in the IndexedStack, so tell them to pick up any
+    // progress made elsewhere (XP, streak, hearts, certificates).
+    SessionService.requestRefresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -29,7 +37,7 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (index) => setState(() => _index = index),
+        onDestinationSelected: _onDestinationSelected,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.explore_outlined), selectedIcon: Icon(Icons.explore_rounded), label: 'Learn'),
           NavigationDestination(icon: Icon(Icons.code_outlined), selectedIcon: Icon(Icons.code_rounded), label: 'Code'),

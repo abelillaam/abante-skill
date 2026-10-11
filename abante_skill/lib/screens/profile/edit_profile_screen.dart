@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../models/user_profile.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_text_field.dart';
+import '../../widgets/profile_avatar.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key, required this.profile});
@@ -16,69 +20,111 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late final _nameController = TextEditingController(text: widget.profile.name);
   late final _usernameController = TextEditingController(text: widget.profile.username);
-  late final _emailController = TextEditingController(text: widget.profile.email);
   late final _bioController = TextEditingController(text: widget.profile.bio);
+  late String? _photoBase64 = widget.profile.photoBase64;
+  String? _usernameError;
 
   @override
   void dispose() {
     _nameController.dispose();
     _usernameController.dispose();
-    _emailController.dispose();
     _bioController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      // Small and compressed on purpose: the photo is stored inline in the
+      // user's Firestore document, which has a 1 MB limit.
+      final file = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 256,
+        maxHeight: 256,
+        imageQuality: 70,
+        preferredCameraDevice: CameraDevice.front,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() => _photoBase64 = base64Encode(bytes));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(source == ImageSource.camera
+              ? "Couldn't open the camera. Check that Abante has camera permission."
+              : "Couldn't open your photos. Check that Abante has photo permission."),
+        ),
+      );
+    }
   }
 
   void _openChangePhotoSheet() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
       builder: (sheetContext) => Container(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
-            ),
-            _PhotoOptionTile(
-              icon: Icons.photo_camera_outlined,
-              label: 'Take Photo',
-              onTap: () => Navigator.of(sheetContext).pop(),
-            ),
-            _PhotoOptionTile(
-              icon: Icons.photo_library_outlined,
-              label: 'Choose from Gallery',
-              onTap: () => Navigator.of(sheetContext).pop(),
-            ),
-            _PhotoOptionTile(
-              icon: Icons.delete_outline_rounded,
-              label: 'Remove Photo',
-              color: AppColors.error,
-              onTap: () => Navigator.of(sheetContext).pop(),
-            ),
-          ],
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
+              ),
+              _PhotoOptionTile(
+                icon: Icons.photo_camera_outlined,
+                label: 'Take Photo',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickPhoto(ImageSource.camera);
+                },
+              ),
+              _PhotoOptionTile(
+                icon: Icons.photo_library_outlined,
+                label: 'Choose from Gallery',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickPhoto(ImageSource.gallery);
+                },
+              ),
+              if (_photoBase64 != null)
+                _PhotoOptionTile(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Remove Photo',
+                  color: AppColors.error,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    setState(() => _photoBase64 = null);
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _save() {
-    final updated = UserProfile(
-      name: _nameController.text.trim().isEmpty ? widget.profile.name : _nameController.text.trim(),
-      username: _usernameController.text.trim().isEmpty ? widget.profile.username : _usernameController.text.trim(),
-      email: _emailController.text.trim().isEmpty ? widget.profile.email : _emailController.text.trim(),
+    final username = _usernameController.text.trim().replaceAll('@', '');
+    if (username.isNotEmpty && !RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(username)) {
+      setState(() => _usernameError = '3–24 letters, numbers, dots or underscores');
+      return;
+    }
+    final name = _nameController.text.trim();
+    final updated = widget.profile.copyWith(
+      name: name.isEmpty ? widget.profile.name : name,
+      username: username.isEmpty ? widget.profile.username : username,
       bio: _bioController.text.trim(),
-      streakDays: widget.profile.streakDays,
-      totalXp: widget.profile.totalXp,
-      lessonsCompleted: widget.profile.lessonsCompleted,
-      weekCompleted: widget.profile.weekCompleted,
+      photoBase64: _photoBase64,
+      clearPhoto: _photoBase64 == null,
     );
     Navigator.of(context).pop(updated);
   }
@@ -106,25 +152,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onTap: _openChangePhotoSheet,
                   child: Stack(
                     children: [
-                      CircleAvatar(
-                        radius: 44,
-                        backgroundColor: AppColors.primary,
-                        child: Text(
-                          widget.profile.name.substring(0, 1).toUpperCase(),
-                          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
-                        ),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+                        child: ProfileAvatar(initial: widget.profile.initial, photoBase64: _photoBase64, radius: 46),
                       ),
                       Positioned(
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(7),
                           decoration: BoxDecoration(
                             color: AppColors.primary,
                             shape: BoxShape.circle,
                             border: Border.all(color: AppColors.background, width: 3),
                           ),
-                          child: const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
+                          child: Icon(Icons.camera_alt_rounded, size: 14, color: AppColors.onPrimary),
                         ),
                       ),
                     ],
@@ -139,20 +182,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              AppTextField(label: 'Name', hint: 'Your full name', controller: _nameController, prefixIcon: Icons.person_outline_rounded),
-              const SizedBox(height: 18),
-              AppTextField(label: 'Username', hint: 'username', controller: _usernameController, prefixIcon: Icons.alternate_email_rounded),
+              AppTextField(
+                label: 'Name',
+                hint: 'Your full name',
+                controller: _nameController,
+                prefixIcon: Icons.person_outline_rounded,
+                maxLength: 40,
+              ),
+              const SizedBox(height: 10),
+              AppTextField(
+                label: 'Username',
+                hint: 'username',
+                controller: _usernameController,
+                prefixIcon: Icons.alternate_email_rounded,
+                errorText: _usernameError,
+              ),
               const SizedBox(height: 18),
               AppTextField(
                 label: 'Email',
                 hint: 'you@example.com',
-                controller: _emailController,
+                initialValue: widget.profile.email,
                 keyboardType: TextInputType.emailAddress,
                 prefixIcon: Icons.mail_outline_rounded,
+                readOnly: true,
+                helperText: 'This is the email you log in with.',
               ),
               const SizedBox(height: 18),
-              AppTextField(label: 'Bio', hint: 'Tell us a bit about yourself', controller: _bioController, maxLines: 3),
-              const SizedBox(height: 28),
+              AppTextField(
+                label: 'Bio',
+                hint: 'Tell us a bit about yourself',
+                controller: _bioController,
+                maxLines: 3,
+                maxLength: 160,
+              ),
+              const SizedBox(height: 20),
               FilledButton(
                 onPressed: _save,
                 child: const Text('Save Changes'),

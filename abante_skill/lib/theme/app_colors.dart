@@ -1,48 +1,70 @@
 import 'package:flutter/material.dart';
 
-/// Abante's palette: a colorful coral-reef ocean — vivid turquoise, coral,
-/// and sandy accents against clean white surfaces. Multi-hue on purpose:
-/// this is meant to read as a lively sea, not a single corporate blue.
+/// Abante's palette: soft petal pinks grounded by dusty mauve, with a sage
+/// alabaster for calm "success" moments. Built from five swatches:
+///
+///   Alabaster Grey #D8E2DC · Powder Petal #FFE5D9 · Pastel Pink #FFCAD4
+///   Cherry Blossom #F4ACB7 · Dusty Mauve #9D8189
+///
+/// Every role below is a getter so the whole app can flip between light and
+/// dark at runtime (see `ThemeController`). Light mode leans on the petals
+/// for surfaces and uses mauve for actions; dark mode inverts that, with
+/// cherry blossom as the action color on deep mauve-black surfaces.
 class AppColors {
   AppColors._();
 
-  // Brand — ocean blues
-  static const primary = Color(0xFF00A3C4);
-  static const primaryDark = Color(0xFF0B4F79);
-  static const primaryLight = Color(0xFFB6EFF5);
-  static const accent = Color(0xFF00D1B2);
+  /// Set by `ThemeController`; read by every role getter below.
+  static bool isDark = false;
 
-  // Reef accents — the "colorful" part of the palette
-  static const coral = Color(0xFFFF6F5E);
-  static const coralDeep = Color(0xFFE24A3B);
-  static const sunsetPink = Color(0xFFFF8FA3);
-  static const sandy = Color(0xFFFFB648);
-  static const sandyDeep = Color(0xFFE58A1F);
-  static const seafoam = Color(0xFF2ED9A3);
+  // Raw palette swatches.
+  static const alabasterGrey = Color(0xFFD8E2DC);
+  static const powderPetal = Color(0xFFFFE5D9);
+  static const pastelPink = Color(0xFFFFCAD4);
+  static const cherryBlossom = Color(0xFFF4ACB7);
+  static const dustyMauve = Color(0xFF9D8189);
+
+  static Color _pick(Color light, Color dark) => isDark ? dark : light;
+
+  // Brand
+  static Color get primary => _pick(dustyMauve, cherryBlossom);
+  static Color get primaryDark => _pick(const Color(0xFF7A6169), dustyMauve);
+  static Color get primaryLight => _pick(pastelPink, const Color(0xFF5A4450));
+  static Color get accent => _pick(cherryBlossom, pastelPink);
+
+  /// Text/icons drawn on top of [primary].
+  static Color get onPrimary => _pick(Colors.white, const Color(0xFF2B2026));
 
   // Surfaces
-  static const background = Color(0xFFF2FAFC);
-  static const surface = Color(0xFFFFFFFF);
-  static const surfaceSunken = Color(0xFFE3F6F5);
-  static const border = Color(0xFFD9EFF3);
+  static Color get background => _pick(const Color(0xFFFFF6F2), const Color(0xFF1E171B));
+  static Color get surface => _pick(Colors.white, const Color(0xFF2A2126));
+  static Color get surfaceSunken => _pick(powderPetal, const Color(0xFF352A30));
+  static Color get border => _pick(const Color(0xFFF3DCD6), const Color(0xFF45373E));
 
   // Ink surfaces (code panels, dark chips)
-  static const ink = Color(0xFF042634);
-  static const inkRaised = Color(0xFF0B3A49);
-  static const inkText = Color(0xFFE1F7F3);
-  static const inkTextDim = Color(0xFF7FAEB8);
+  static Color get ink => _pick(const Color(0xFF3B2F35), const Color(0xFF151013));
+  static Color get inkRaised => _pick(const Color(0xFF4A3C43), const Color(0xFF241B20));
+  static Color get inkText => powderPetal;
+  static Color get inkTextDim => _pick(const Color(0xFFCDB4BB), const Color(0xFFA88E96));
 
   // Text
-  static const textPrimary = Color(0xFF0B2836);
-  static const textSecondary = Color(0xFF5B7A85);
+  static Color get textPrimary => _pick(const Color(0xFF3D3036), const Color(0xFFFBEAE4));
+  static Color get textSecondary => _pick(const Color(0xFF8A737B), const Color(0xFFC2A9B1));
 
   // Status
-  static const success = seafoam;
-  static const error = coralDeep;
-  static const streak = sandy;
-  static const streakDeep = sandyDeep;
-  static const heart = coral;
-  static const locked = Color(0xFFC7DEE3);
+  static Color get success => _pick(const Color(0xFF6E9C82), const Color(0xFF9CC3AC));
+  static Color get successSoft => _pick(alabasterGrey, const Color(0xFF2F3A34));
+  static Color get error => _pick(const Color(0xFFD9677B), const Color(0xFFF28B9C));
+  static Color get streak => cherryBlossom;
+  static Color get streakDeep => _pick(dustyMauve, const Color(0xFF7A6169));
+  static Color get heart => _pick(const Color(0xFFE2889A), cherryBlossom);
+  static Color get locked => _pick(const Color(0xFFD9CDD1), const Color(0xFF5A4B52));
 
-  static const splashGradient = [primaryDark, primary, accent];
+  /// The soft hero gradient used behind the splash, auth headers and
+  /// profile banner.
+  static List<Color> get splashGradient => isDark
+      ? const [Color(0xFF2E2329), Color(0xFF4A3841), dustyMauve]
+      : const [powderPetal, pastelPink, cherryBlossom];
+
+  /// Text/icons drawn on top of [splashGradient].
+  static Color get onHero => _pick(const Color(0xFF3D3036), powderPetal);
 }

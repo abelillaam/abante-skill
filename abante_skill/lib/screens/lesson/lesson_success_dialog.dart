@@ -3,18 +3,37 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 
-Future<void> showLessonSuccessDialog(BuildContext context, {required VoidCallback onContinue}) {
+Future<void> showLessonSuccessDialog(
+  BuildContext context, {
+  required VoidCallback onContinue,
+  int xpEarned = 0,
+  bool isReview = false,
+  bool heartRestored = false,
+}) {
   return showDialog(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _LessonSuccessDialog(onContinue: onContinue),
+    builder: (_) => _LessonSuccessDialog(
+      onContinue: onContinue,
+      xpEarned: xpEarned,
+      isReview: isReview,
+      heartRestored: heartRestored,
+    ),
   );
 }
 
 class _LessonSuccessDialog extends StatelessWidget {
-  const _LessonSuccessDialog({required this.onContinue});
+  const _LessonSuccessDialog({
+    required this.onContinue,
+    required this.xpEarned,
+    required this.isReview,
+    required this.heartRestored,
+  });
 
   final VoidCallback onContinue;
+  final int xpEarned;
+  final bool isReview;
+  final bool heartRestored;
 
   @override
   Widget build(BuildContext context) {
@@ -34,19 +53,19 @@ class _LessonSuccessDialog extends StatelessWidget {
               width: 88,
               height: 88,
               decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.12),
+                color: AppColors.successSoft,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_rounded, color: AppColors.success, size: 48),
+              child: Icon(Icons.check_rounded, color: AppColors.success, size: 48),
             ),
             const SizedBox(height: 20),
             Text(
-              'Lesson Complete!',
+              isReview ? 'Review Complete!' : 'Lesson Complete!',
               style: AppTheme.headline(fontSize: 22, weight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
-              "Great work — you're one step closer to your goal.",
+            Text(
+              isReview ? 'Nice refresher — practice makes it stick.' : "Great work — you're one step closer to your goal.",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4),
             ),
@@ -54,9 +73,17 @@ class _LessonSuccessDialog extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _StatChip(icon: Icons.bolt_rounded, label: '+10 XP', color: AppColors.primary),
-                const SizedBox(width: 12),
-                _StatChip(icon: Icons.local_fire_department_rounded, label: 'Streak +1', color: AppColors.streak),
+                if (isReview)
+                  _StatChip(
+                    icon: Icons.favorite_rounded,
+                    label: heartRestored ? '+1 Heart' : 'Hearts full',
+                    color: AppColors.heart,
+                  )
+                else ...[
+                  _StatChip(icon: Icons.bolt_rounded, label: '+$xpEarned XP', color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  _StatChip(icon: Icons.check_circle_rounded, label: '+1 Lesson', color: AppColors.success),
+                ],
               ],
             ),
             const SizedBox(height: 26),

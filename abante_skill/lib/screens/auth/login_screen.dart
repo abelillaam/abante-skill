@@ -1,19 +1,14 @@
-import 'dart:async';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-import '../../services/curriculum_repository.dart';
 import '../../services/google_auth_service.dart';
-import '../../services/push_notification_service.dart';
-import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/google_button.dart';
 import '../../widgets/pressable_scale.dart';
-import '../main_shell.dart';
+import 'auth_flow.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -28,6 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  String? _emailError;
+  String? _passwordError;
 
   @override
   void dispose() {
@@ -36,45 +33,34 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _finishLogin() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final savedCurriculum = await UserRepository.loadCurriculum(user.uid);
-        if (savedCurriculum != null) {
-          CurriculumRepository.units = savedCurriculum;
-          CurriculumRepository.level = await UserRepository.loadLevel(user.uid);
-        } else {
-          // No saved curriculum (e.g. first-ever login via Google, skipping
-          // onboarding/signup) — still make sure the user exists in Firestore.
-          await UserRepository.saveUser(user: user);
-        }
-      } catch (_) {
-        // Don't block reaching the app over a Firestore hiccup.
-      }
-      unawaited(PushNotificationService.saveTokenIfSignedIn());
-    }
-
+  void _showMessage(String message) {
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainShell()),
-      (route) => false,
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  bool _validate() {
+    final email = _emailController.text.trim();
+    setState(() {
+      _emailError = email.isEmpty
+          ? 'Enter your email'
+          : (isValidEmail(email) ? null : "That email address doesn't look right");
+      _passwordError = _passwordController.text.isEmpty ? 'Enter your password' : null;
+    });
+    return _emailError == null && _passwordError == null;
   }
 
   Future<void> _login() async {
+    FocusScope.of(context).unfocus();
+    if (!_validate()) return;
     setState(() => _isLoading = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final result = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      if (mounted) await _finishLogin();
+      if (mounted) await enterApp(context, result.user!);
     } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Could not log in. Try again.')),
-      );
+      _showMessage(friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -83,20 +69,69 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loginWithGoogle() async {
     setState(() => _isGoogleLoading = true);
     try {
-      await GoogleAuthService.signIn();
-      if (mounted) await _finishLogin();
+      User? user;
+      try {
+        user = (await GoogleAuthService.signIn()).user;
+      } on GoogleAccountLinkRequired catch (pending) {
+        if (!mounted) return;
+        user = await linkGoogleToExistingAccount(context, pending);
+      }
+      if (user != null && mounted) await enterApp(context, user);
     } on GoogleSignInException catch (e) {
-      if (!mounted || e.code == GoogleSignInExceptionCode.canceled) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google sign-in failed: ${e.description ?? e.code}')),
-      );
+      if (e.code == GoogleSignInExceptionCode.canceled) return;
+      _showMessage('Google sign-in failed: ${e.description ?? e.code}');
     } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Could not sign in with Google. Try again.')),
-      );
+      _showMessage(friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final controller = TextEditingController(text: _emailController.text.trim());
+    final email = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Reset your password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Enter your account's email and we'll send you a link to set a new password."),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                hintText: 'you@example.com',
+                prefixIcon: Icon(Icons.mail_outline_rounded, size: 20, color: AppColors.textSecondary),
+              ),
+              onSubmitted: (value) => Navigator.of(dialogContext).pop(value.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Send link'),
+          ),
+        ],
+      ),
+    );
+    if (email == null || email.isEmpty) return;
+    if (!isValidEmail(email)) {
+      _showMessage("That email address doesn't look right.");
+      return;
+    }
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      // Same message whether or not the account exists, so this can't be
+      // used to discover who has an account.
+      _showMessage('If an account exists for $email, a reset link is on its way. Check your inbox (and spam).');
+    } on FirebaseAuthException catch (e) {
+      _showMessage(friendlyAuthError(e));
     }
   }
 
@@ -114,6 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
             keyboardType: TextInputType.emailAddress,
             prefixIcon: Icons.mail_outline_rounded,
             controller: _emailController,
+            errorText: _emailError,
           ),
           const SizedBox(height: 18),
           AppTextField(
@@ -122,11 +158,13 @@ class _LoginScreenState extends State<LoginScreen> {
             obscureText: true,
             prefixIcon: Icons.lock_outline_rounded,
             controller: _passwordController,
+            errorText: _passwordError,
+            onSubmitted: (_) => _login(),
           ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: _forgotPassword,
               child: const Text('Forgot password?'),
             ),
           ),
@@ -135,16 +173,16 @@ class _LoginScreenState extends State<LoginScreen> {
             child: FilledButton(
               onPressed: _isLoading ? null : _login,
               child: _isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
                     )
                   : const Text('Log In'),
             ),
           ),
           const SizedBox(height: 20),
-          const _OrDivider(),
+          const OrDivider(),
           const SizedBox(height: 20),
           GoogleSignInButton(onPressed: _loginWithGoogle, isLoading: _isGoogleLoading),
           const SizedBox(height: 28),
@@ -156,10 +194,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               },
               child: RichText(
-                text: const TextSpan(
+                text: TextSpan(
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
                   children: [
-                    TextSpan(text: "Don't have an account? "),
+                    const TextSpan(text: "Don't have an account? "),
                     TextSpan(
                       text: 'Sign up',
                       style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
@@ -175,19 +213,20 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
+/// The "—— or ——" separator between email and Google sign-in.
+class OrDivider extends StatelessWidget {
+  const OrDivider({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: const [
-        Expanded(child: Divider()),
+      children: [
+        const Expanded(child: Divider()),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text('or', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
         ),
-        Expanded(child: Divider()),
+        const Expanded(child: Divider()),
       ],
     );
   }

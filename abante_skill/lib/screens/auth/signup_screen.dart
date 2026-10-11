@@ -1,23 +1,15 @@
-import 'dart:async';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-import '../../services/curriculum_repository.dart';
-import '../../services/curriculum_service.dart';
 import '../../services/google_auth_service.dart';
-import '../../services/push_notification_service.dart';
-import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_theme.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/auth_scaffold.dart';
-import '../../widgets/brand_mark.dart';
+import '../../widgets/curriculum_generating_overlay.dart';
 import '../../widgets/google_button.dart';
-import '../../widgets/ocean_bubbles.dart';
 import '../../widgets/pressable_scale.dart';
-import '../main_shell.dart';
+import 'auth_flow.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -39,11 +31,23 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
+  static const _minPasswordLength = 8;
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _isGoogleLoading = false;
   bool _isGeneratingCurriculum = false;
+  String? _emailError;
+  String? _passwordError;
+
+  OnboardingAnswers? get _answers {
+    final track = widget.onboardingTrack;
+    final level = widget.onboardingLevel;
+    final dailyGoal = widget.onboardingDailyGoal;
+    if (track == null || level == null || dailyGoal == null) return null;
+    return OnboardingAnswers(track: track, level: level, dailyGoal: dailyGoal);
+  }
 
   @override
   void dispose() {
@@ -52,60 +56,53 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  Future<void> _finishSignUp() async {
-    final track = widget.onboardingTrack;
-    final level = widget.onboardingLevel;
-    final dailyGoal = widget.onboardingDailyGoal;
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (track != null && level != null && dailyGoal != null) {
-      setState(() => _isGeneratingCurriculum = true);
-      CurriculumRepository.units = await CurriculumService.generate(
-        track: track,
-        level: level,
-        dailyGoal: dailyGoal,
-      );
-      CurriculumRepository.level = level;
-      if (!mounted) return;
-      setState(() => _isGeneratingCurriculum = false);
-    }
-
-    if (user != null) {
-      try {
-        await UserRepository.saveUser(
-          user: user,
-          track: track,
-          level: level,
-          dailyGoal: dailyGoal,
-          curriculum: CurriculumRepository.units,
-        );
-      } catch (_) {
-        // Don't block the user from reaching the app over a Firestore hiccup;
-        // their auth account already exists either way.
-      }
-      unawaited(PushNotificationService.saveTokenIfSignedIn());
-    }
-
+  void _showMessage(String message) {
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainShell()),
-      (route) => false,
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  bool _validate() {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    setState(() {
+      _emailError = email.isEmpty
+          ? 'Enter your email'
+          : (isValidEmail(email) ? null : "That email address doesn't look right");
+      _passwordError = password.length < _minPasswordLength
+          ? 'Use at least $_minPasswordLength characters'
+          : (RegExp(r'[A-Za-z]').hasMatch(password) && RegExp(r'\d').hasMatch(password)
+              ? null
+              : 'Mix letters and numbers');
+    });
+    return _emailError == null && _passwordError == null;
+  }
+
+  Future<void> _enter(User user) async {
+    await enterApp(
+      context,
+      user,
+      answers: _answers,
+      onGenerating: (value) {
+        if (mounted) setState(() => _isGeneratingCurriculum = value);
+      },
     );
   }
 
   Future<void> _createAccount() async {
+    FocusScope.of(context).unfocus();
+    if (!_validate()) return;
     setState(() => _isLoading = true);
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final result = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      if (mounted) await _finishSignUp();
+      // A verified email lets Firebase safely *link* a later Google sign-in
+      // to this account instead of replacing the password sign-in.
+      result.user?.sendEmailVerification().catchError((_) {});
+      if (mounted) await _enter(result.user!);
     } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Could not create account. Try again.')),
-      );
+      _showMessage(friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -114,18 +111,21 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _signUpWithGoogle() async {
     setState(() => _isGoogleLoading = true);
     try {
-      await GoogleAuthService.signIn();
-      if (mounted) await _finishSignUp();
+      User? user;
+      try {
+        user = (await GoogleAuthService.signIn()).user;
+      } on GoogleAccountLinkRequired catch (pending) {
+        if (!mounted) return;
+        user = await linkGoogleToExistingAccount(context, pending);
+      }
+      // If this Google account already has Abante progress, enterApp keeps
+      // it (and says so) rather than building a new curriculum over it.
+      if (user != null && mounted) await _enter(user);
     } on GoogleSignInException catch (e) {
-      if (!mounted || e.code == GoogleSignInExceptionCode.canceled) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google sign-in failed: ${e.description ?? e.code}')),
-      );
+      if (e.code == GoogleSignInExceptionCode.canceled) return;
+      _showMessage('Google sign-in failed: ${e.description ?? e.code}');
     } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Could not sign in with Google. Try again.')),
-      );
+      _showMessage(friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);
     }
@@ -140,135 +140,78 @@ class _SignupScreenState extends State<SignupScreen> {
           subtitle: 'Create an account to save your progress.',
           child: _buildForm(),
         ),
-        if (_isGeneratingCurriculum) const Positioned.fill(child: _CurriculumGeneratingOverlay()),
+        if (_isGeneratingCurriculum) const Positioned.fill(child: CurriculumGeneratingOverlay()),
       ],
     );
   }
 
   Widget _buildForm() {
     return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AppTextField(
-            label: 'Email',
-            hint: 'you@example.com',
-            keyboardType: TextInputType.emailAddress,
-            prefixIcon: Icons.mail_outline_rounded,
-            controller: _emailController,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppTextField(
+          label: 'Email',
+          hint: 'you@example.com',
+          keyboardType: TextInputType.emailAddress,
+          prefixIcon: Icons.mail_outline_rounded,
+          controller: _emailController,
+          errorText: _emailError,
+        ),
+        const SizedBox(height: 18),
+        AppTextField(
+          label: 'Password',
+          hint: 'At least $_minPasswordLength characters',
+          obscureText: true,
+          prefixIcon: Icons.lock_outline_rounded,
+          controller: _passwordController,
+          errorText: _passwordError,
+          onSubmitted: (_) => _createAccount(),
+        ),
+        const SizedBox(height: 24),
+        PressableScale(
+          child: FilledButton(
+            onPressed: _isLoading ? null : _createAccount,
+            child: _isLoading
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
+                  )
+                : const Text('Create Account'),
           ),
-          const SizedBox(height: 18),
-          AppTextField(
-            label: 'Password',
-            hint: 'At least 8 characters',
-            obscureText: true,
-            prefixIcon: Icons.lock_outline_rounded,
-            controller: _passwordController,
-          ),
-          const SizedBox(height: 24),
-          PressableScale(
-            child: FilledButton(
-              onPressed: _isLoading ? null : _createAccount,
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Create Account'),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const _OrDivider(),
-          const SizedBox(height: 20),
-          GoogleSignInButton(onPressed: _signUpWithGoogle, isLoading: _isGoogleLoading),
-          const SizedBox(height: 28),
-          Center(
-            child: TextButton(
-              onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              },
-              child: RichText(
-                text: const TextSpan(
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                  children: [
-                    TextSpan(text: 'Already have an account? '),
-                    TextSpan(
-                      text: 'Log in',
-                      style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
+        ),
+        const SizedBox(height: 20),
+        const OrDivider(),
+        const SizedBox(height: 20),
+        GoogleSignInButton(onPressed: _signUpWithGoogle, isLoading: _isGoogleLoading),
+        const SizedBox(height: 10),
+        Text(
+          'Already have an account with this Google email? Your progress carries over.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 18),
+        Center(
+          child: TextButton(
+            onPressed: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                children: [
+                  const TextSpan(text: 'Already have an account? '),
+                  TextSpan(
+                    text: 'Log in',
+                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
+                  ),
+                ],
               ),
             ),
           ),
-      ],
-    );
-  }
-}
-
-class _CurriculumGeneratingOverlay extends StatelessWidget {
-  const _CurriculumGeneratingOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: AppColors.splashGradient,
         ),
-      ),
-      child: Stack(
-        children: [
-          const Positioned(top: 70, left: -24, child: OceanBubble(size: 70, opacity: 0.1)),
-          const Positioned(top: 160, right: -16, child: OceanBubble(size: 44, opacity: 0.12)),
-          const Positioned(bottom: 140, left: 32, child: OceanBubble(size: 26, opacity: 0.14)),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const AbanteMark(size: 84),
-                const SizedBox(height: 36),
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Building your curriculum',
-                  style: AppTheme.headline(fontSize: 19, weight: FontWeight.w800, color: Colors.white),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Personalizing lessons just for you',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: const [
-        Expanded(child: Divider()),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text('or', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-        ),
-        Expanded(child: Divider()),
       ],
     );
   }
