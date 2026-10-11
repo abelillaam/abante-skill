@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Local helper with the values to paste into GitHub secrets
+github-secrets.txt

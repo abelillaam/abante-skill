@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download Abante</title>
+  <meta name="description" content="Download the latest Abante app for Android — learn to code one small lesson at a time.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FFF6F2;
+      --surface: #FFFFFF;
+      --sunken: #FFE5D9;
+      --border: #F3DCD6;
+      --text: #3D3036;
+      --text-2: #8A737B;
+      --primary: #9D8189;
+      --on-primary: #FFFFFF;
+      --accent: #F4ACB7;
+      --sage: #D8E2DC;
+      --hero-1: #FFE5D9;
+      --hero-2: #FFCAD4;
+      --hero-3: #F4ACB7;
+      --shadow: rgba(157, 129, 137, 0.22);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #1E171B;
+        --surface: #2A2126;
+        --sunken: #352A30;
+        --border: #45373E;
+        --text: #FBEAE4;
+        --text-2: #C2A9B1;
+        --primary: #F4ACB7;
+        --on-primary: #2B2026;
+        --accent: #FFCAD4;
+        --sage: #2F3A34;
+        --hero-1: #2E2329;
+        --hero-2: #4A3841;
+        --hero-3: #9D8189;
+        --shadow: rgba(0, 0, 0, 0.4);
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #1E171B; --surface: #2A2126; --sunken: #352A30; --border: #45373E;
+      --text: #FBEAE4; --text-2: #C2A9B1; --primary: #F4ACB7; --on-primary: #2B2026;
+      --accent: #FFCAD4; --sage: #2F3A34; --hero-1: #2E2329; --hero-2: #4A3841; --hero-3: #9D8189;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    .hero {
+      background: linear-gradient(135deg, var(--hero-1), var(--hero-2) 55%, var(--hero-3));
+      padding: 56px 16px 72px;
+      text-align: center;
+      clip-path: ellipse(140% 100% at 50% 0%);
+    }
+    .logo {
+      width: 112px; height: 112px;
+      border-radius: 26px;
+      box-shadow: 0 14px 30px var(--shadow);
+      animation: float 2.4s ease-in-out infinite alternate;
+    }
+    @keyframes float { from { transform: translateY(-5px); } to { transform: translateY(5px); } }
+    @media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
+    h1 {
+      font-family: Sora, Inter, sans-serif;
+      font-size: clamp(2rem, 7vw, 2.6rem);
+      font-weight: 800;
+      margin: 20px 0 4px;
+    }
+    .tagline { margin: 0; color: var(--text); opacity: 0.75; font-size: 1.05rem; }
+
+    main { position: relative; z-index: 1; max-width: 560px; margin: -36px auto 48px; padding: 0 16px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 10px 30px var(--shadow);
+    }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 18px; }
+    .chip {
+      background: var(--sunken);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .download {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%;
+      min-height: 56px;
+      border-radius: 16px;
+      background: var(--primary);
+      color: var(--on-primary);
+      font-family: Sora, Inter, sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      text-decoration: none;
+      transition: transform 0.12s ease, filter 0.12s ease;
+    }
+    .download:hover { filter: brightness(1.05); }
+    .download:active { transform: scale(0.98); }
+    .download[aria-disabled="true"] { background: var(--border); color: var(--text-2); pointer-events: none; }
+    .small { text-align: center; color: var(--text-2); font-size: 0.85rem; margin: 10px 0 0; }
+
+    h2 { font-family: Sora, Inter, sans-serif; font-size: 1.1rem; margin: 28px 0 10px; }
+    .notes { color: var(--text-2); }
+    .notes ul { padding-left: 1.2em; margin: 6px 0; }
+    .notes li { margin: 4px 0; }
+    .notes h3 { color: var(--text); font-size: 0.95rem; margin: 14px 0 4px; }
+    .notes p { margin: 6px 0; }
+    .notes code { background: var(--sunken); border-radius: 6px; padding: 1px 5px; font-size: 0.9em; }
+
+    ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+    ol.steps li {
+      counter-increment: step;
+      position: relative;
+      padding: 10px 0 10px 44px;
+      color: var(--text-2);
+    }
+    ol.steps li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 8px;
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--sage);
+      color: var(--text);
+      display: grid; place-items: center;
+      font-weight: 700; font-size: 0.9rem;
+    }
+    ol.steps strong { color: var(--text); }
+    footer { text-align: center; color: var(--text-2); font-size: 0.85rem; padding: 0 16px 32px; }
+    footer a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <img class="logo" src="logo.png" alt="Abante logo" width="112" height="112">
+    <h1>Abante</h1>
+    <p class="tagline">Build skills that move you forward</p>
+  </header>
+
+  <main>
+    <section class="card" aria-live="polite">
+      <div class="meta">
+        <span class="chip" id="version">Checking latest version…</span>
+        <span class="chip" id="date" hidden></span>
+        <span class="chip" id="size" hidden></span>
+      </div>
+      <a class="download" id="download" href="#" aria-disabled="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="download-label">Download for Android</span>
+      </a>
+      <p class="small" id="hint">Android 5.0 or newer · free</p>
+
+      <h2>What's new</h2>
+      <div class="notes" id="notes"><p>Loading release notes…</p></div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2 style="margin-top:0">How to install</h2>
+      <ol class="steps">
+        <li><strong>Download the APK</strong> with the button above.</li>
+        <li><strong>Open it</strong> from your notifications or Downloads.</li>
+        <li>If asked, <strong>allow installs from this source</strong> (your browser or file manager), then tap <strong>Install</strong>.</li>
+        <li><strong>Updating?</strong> Just install the new APK over the old one — your progress is saved to your account.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <a id="all-releases" href="https://github.com/abelillaam/abante-skill/releases">All versions</a>
+  </footer>
+
+  <script>
+    const REPO = 'abelillaam/abante-skill';
+    const $ = (id) => document.getElementById(id);
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Small Markdown subset for release notes: headings, bullets, bold, code.
+    function renderNotes(markdown) {
+      const inline = (s) => escapeHtml(s)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`(.+?)`/g, '<code>$1</code>');
+      let html = '';
+      let inList = false;
+      for (const raw of markdown.replace(/\r/g, '').split('\n')) {
+        const line = raw.trim();
+        const bullet = line.match(/^[-*]\s+(.*)$/);
+        if (bullet) {
+          if (!inList) { html += '<ul>'; inList = true; }
+          html += `<li>${inline(bullet[1])}</li>`;
+          continue;
+        }
+        if (inList) { html += '</ul>'; inList = false; }
+        if (!line) continue;
+        const heading = line.match(/^#+\s+(.*)$/);
+        html += heading ? `<h3>${inline(heading[1])}</h3>` : `<p>${inline(line)}</p>`;
+      }
+      if (inList) html += '</ul>';
+      return html || '<p>No notes for this release.</p>';
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (res.status === 404) {
+          $('version').textContent = 'First release coming soon';
+          $('notes').innerHTML = '<p>Check back shortly!</p>';
+          $('download-label').textContent = 'Not available yet';
+          return;
+        }
+        if (!res.ok) throw new Error(res.status);
+        const release = await res.json();
+        const apk = (release.assets || []).find((a) => a.name.endsWith('.apk'));
+
+        $('version').textContent = release.tag_name;
+        const date = new Date(release.published_at);
+        $('date').textContent = date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        $('date').hidden = false;
+        $('notes').innerHTML = renderNotes(release.body || '');
+
+        if (apk) {
+          $('size').textContent = `${(apk.size / 1048576).toFixed(1)} MB`;
+          $('size').hidden = false;
+          $('download').href = apk.browser_download_url;
+          $('download').removeAttribute('aria-disabled');
+          $('download-label').textContent = `Download ${release.tag_name}`;
+        }
+      } catch (e) {
+        // API unavailable (offline or rate-limited): fall back to the stable
+        // "latest release" download link GitHub provides.
+        $('version').textContent = 'Latest version';
+        $('notes').innerHTML = '<p>Couldn’t load the release notes right now — the download still works.</p>';
+        $('download').href = `https://github.com/${REPO}/releases/latest/download/abante.apk`;
+        $('download').removeAttribute('aria-disabled');
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

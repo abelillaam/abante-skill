@@ -1,0 +1,109 @@
+# Builds a signed APK and publishes it as a GitHub Release whenever the app
+# version in abante_skill/pubspec.yaml changes on main.
+#
+# To ship an update:
+#   1. Bump `version:` in abante_skill/pubspec.yaml (e.g. 1.0.0+1 -> 1.0.1+2)
+#   2. Write what changed in release-notes.md
+#   3. Commit and push to main
+# The app then sees the new release and offers "Update now".
+#
+# Needs these repository secrets (Settings -> Secrets and variables -> Actions):
+#   KEYSTORE_BASE64    base64 of android/app/upload-keystore.jks
+#   KEYSTORE_PASSWORD  its password (from android/key.properties)
+#   GROQ_API_KEY       the Groq key the app's AI features use
+
+name: Release APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - abante_skill/pubspec.yaml
+      - release-notes.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      exists: ${{ steps.version.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read app version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -E '^version:' abante_skill/pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v$version is already released - bump the version in pubspec.yaml to publish an update."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: abante_skill
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.1
+          channel: stable
+          cache: true
+
+      - name: Add signing key and API config from secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD GROQ_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret $name (Settings -> Secrets and variables -> Actions)."
+              exit 1
+            fi
+          done
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n' \
+            "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > android/key.properties
+          printf "class GroqConfig {\n  static const apiKey = '%s';\n}\n" "$GROQ_API_KEY" > lib/config/groq_config.dart
+
+      - name: Build release APK
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --build-name=${{ needs.check.outputs.version }} \
+            --build-number=${{ github.run_number }}
+          cp build/app/outputs/flutter-apk/app-release.apk abante.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: Abante v${{ needs.check.outputs.version }}
+          body_path: release-notes.md
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: abante_skill/abante.apk
