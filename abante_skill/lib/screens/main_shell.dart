@@ -10,6 +10,10 @@ import 'trivia/trivia_screen.dart';
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
+  /// The selected bottom-nav tab (0 Learn, 1 Code, 2 Quiz, 3 Profile). Tabs
+  /// stay alive in the background, so they use this to know if they're seen.
+  static final selectedTab = ValueNotifier<int>(0);
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -17,8 +21,15 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    MainShell.selectedTab.value = 0;
+  }
+
   void _onDestinationSelected(int index) {
     setState(() => _index = index);
+    MainShell.selectedTab.value = index;
     // Tabs stay alive in the IndexedStack, so tell them to pick up any
     // progress made elsewhere (XP, streak, hearts, certificates).
     SessionService.requestRefresh();

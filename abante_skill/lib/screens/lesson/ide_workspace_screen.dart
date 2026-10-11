@@ -14,12 +14,12 @@ import '../../services/groq_client.dart';
 import '../../services/hearts_repository.dart';
 import '../../services/lesson_exercise_service.dart';
 import '../../services/session_service.dart';
-import '../../services/streak_repository.dart';
 import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/badges.dart';
 import '../../widgets/editor_dot.dart';
+import '../../widgets/practice_time_tracker.dart';
 import '../../widgets/pressable_scale.dart';
 import '../main_shell.dart';
 import 'certificate_dialog.dart';
@@ -60,7 +60,6 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
   bool _isLoadingExercise = false;
   bool _exerciseFailed = false;
   LessonExercise? _exercise;
-  final _sessionStopwatch = Stopwatch()..start();
 
   /// Replaying an already-finished lesson: no hearts at stake, no repeat
   /// XP, and passing earns a heart back.
@@ -161,17 +160,7 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
     _codeFocus
       ..removeListener(_onFocusChanged)
       ..dispose();
-    _recordSessionTime();
     super.dispose();
-  }
-
-  void _recordSessionTime() {
-    _sessionStopwatch.stop();
-    final minutes = (_sessionStopwatch.elapsed.inSeconds / 60).round();
-    if (minutes <= 0) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    unawaited(StreakRepository.addMinutes(user, minutes));
   }
 
   void _onFocusChanged() {
@@ -340,201 +329,206 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     final editing = _isEditing;
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        automaticallyImplyLeading: !widget.isSandbox,
-        leading: widget.isSandbox
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(
-                  context,
-                ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const MainShell()), (route) => false),
+    return PracticeTimeTracker(
+      // The sandbox lives in a bottom-nav tab that stays alive in the
+      // background, so it only counts while the Code tab is selected.
+      isActive: widget.isSandbox ? () => MainShell.selectedTab.value == 1 : null,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          automaticallyImplyLeading: !widget.isSandbox,
+          leading: widget.isSandbox
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const MainShell()), (route) => false),
+                ),
+          title: Text(
+            widget.isSandbox ? 'Sandbox' : (_isReview ? 'Review · ${widget.lesson!.title}' : widget.lesson!.title),
+          ),
+          centerTitle: true,
+          actions: [
+            if (!widget.isSandbox && !_isReview)
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Center(child: HeartsBadge(hearts: _hearts)),
               ),
-        title: Text(
-          widget.isSandbox ? 'Sandbox' : (_isReview ? 'Review · ${widget.lesson!.title}' : widget.lesson!.title),
+          ],
         ),
-        centerTitle: true,
-        actions: [
-          if (!widget.isSandbox && !_isReview)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(child: HeartsBadge(hearts: _hearts)),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: _isLoadingExercise
-            ? const LessonLoading(message: 'Writing your coding task…')
-            : _exerciseFailed
-            ? LessonLoadError(onRetry: _loadExercise)
-            : Column(
-                children: [
-                  if (editing)
-                    _CompactTaskBar(instruction: _instruction, onTap: _showFullTask)
-                  else
-                    Container(
-                      width: double.infinity,
-                      constraints: const BoxConstraints(maxHeight: 120),
-                      margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Text(
-                                _instruction,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.textPrimary,
-                                  height: 1.4,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: AppColors.ink,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.ink.withValues(alpha: 0.2),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                            child: Row(
-                              children: [
-                                EditorDot(color: AppColors.error),
-                                const SizedBox(width: 6),
-                                EditorDot(color: AppColors.streak),
-                                const SizedBox(width: 6),
-                                EditorDot(color: AppColors.success),
-                                const Spacer(),
-                                if (widget.isSandbox)
-                                  _LanguagePicker(language: _language, onChanged: _onLanguageChanged)
-                                else
-                                  Text(
-                                    _taskFileName,
-                                    style: AppTheme.code(
-                                      fontSize: 11,
-                                      color: AppColors.inkTextDim,
-                                      weight: FontWeight.w600,
-                                    ),
+        body: SafeArea(
+          child: _isLoadingExercise
+              ? const LessonLoading(message: 'Writing your coding task…')
+              : _exerciseFailed
+              ? LessonLoadError(onRetry: _loadExercise)
+              : Column(
+                  children: [
+                    if (editing)
+                      _CompactTaskBar(instruction: _instruction, onTap: _showFullTask)
+                    else
+                      Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(maxHeight: 120),
+                        margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                child: Text(
+                                  _instruction,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-                              child: TextField(
-                                controller: _codeController,
-                                focusNode: _codeFocus,
-                                keyboardType: TextInputType.multiline,
-                                autocorrect: false,
-                                enableSuggestions: false,
-                                smartQuotesType: SmartQuotesType.disabled,
-                                smartDashesType: SmartDashesType.disabled,
-                                textCapitalization: TextCapitalization.none,
-                                scrollPadding: const EdgeInsets.only(bottom: 80),
-                                maxLines: null,
-                                expands: true,
-                                textAlignVertical: TextAlignVertical.top,
-                                cursorColor: AppColors.inkText,
-                                style: AppTheme.code(),
-                                decoration: const InputDecoration(
-                                  border: InputBorder.none,
-                                  isCollapsed: true,
-                                  filled: false,
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  if (editing)
-                    _CodeKeysBar(
-                      onInsert: _insertText,
-                      onDone: _codeFocus.unfocus,
-                      onRun: _isRunning ? null : _runFromKeyboard,
-                    )
-                  else ...[
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic,
-                      child: _consoleVisible
-                          ? _ConsolePanel(
-                              sandbox: widget.isSandbox,
-                              isRunning: _isRunning,
-                              runFailed: _runFailed,
-                              success: _lastRunSucceeded,
-                              hearts: _isReview ? 1 : _hearts,
-                              output: _output,
-                              onRetry: _onRunCode,
-                              onClose: () => setState(() => _consoleVisible = false),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: PressableScale(
-                              child: OutlinedButton.icon(
-                                onPressed: _onAskAiTutor,
-                                icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                                label: const Text('Ask AI Tutor'),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.ink,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.ink.withValues(alpha: 0.2),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                              child: Row(
+                                children: [
+                                  EditorDot(color: AppColors.error),
+                                  const SizedBox(width: 6),
+                                  EditorDot(color: AppColors.streak),
+                                  const SizedBox(width: 6),
+                                  EditorDot(color: AppColors.success),
+                                  const Spacer(),
+                                  if (widget.isSandbox)
+                                    _LanguagePicker(language: _language, onChanged: _onLanguageChanged)
+                                  else
+                                    Text(
+                                      _taskFileName,
+                                      style: AppTheme.code(
+                                        fontSize: 11,
+                                        color: AppColors.inkTextDim,
+                                        weight: FontWeight.w600,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: PressableScale(
-                              child: FilledButton.icon(
-                                onPressed: _isRunning ? null : _onRunCode,
-                                icon: _isRunning
-                                    ? SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
-                                      )
-                                    : const Icon(Icons.play_arrow_rounded, size: 20),
-                                label: Text(_isRunning ? 'Running...' : 'Run Code'),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+                                child: TextField(
+                                  controller: _codeController,
+                                  focusNode: _codeFocus,
+                                  keyboardType: TextInputType.multiline,
+                                  autocorrect: false,
+                                  enableSuggestions: false,
+                                  smartQuotesType: SmartQuotesType.disabled,
+                                  smartDashesType: SmartDashesType.disabled,
+                                  textCapitalization: TextCapitalization.none,
+                                  scrollPadding: const EdgeInsets.only(bottom: 80),
+                                  maxLines: null,
+                                  expands: true,
+                                  textAlignVertical: TextAlignVertical.top,
+                                  cursorColor: AppColors.inkText,
+                                  style: AppTheme.code(),
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    isCollapsed: true,
+                                    filled: false,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
+                    if (editing)
+                      _CodeKeysBar(
+                        onInsert: _insertText,
+                        onDone: _codeFocus.unfocus,
+                        onRun: _isRunning ? null : _runFromKeyboard,
+                      )
+                    else ...[
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        child: _consoleVisible
+                            ? _ConsolePanel(
+                                sandbox: widget.isSandbox,
+                                isRunning: _isRunning,
+                                runFailed: _runFailed,
+                                success: _lastRunSucceeded,
+                                hearts: _isReview ? 1 : _hearts,
+                                output: _output,
+                                onRetry: _onRunCode,
+                                onClose: () => setState(() => _consoleVisible = false),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: PressableScale(
+                                child: OutlinedButton.icon(
+                                  onPressed: _onAskAiTutor,
+                                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                                  label: const Text('Ask AI Tutor'),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: PressableScale(
+                                child: FilledButton.icon(
+                                  onPressed: _isRunning ? null : _onRunCode,
+                                  icon: _isRunning
+                                      ? SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
+                                        )
+                                      : const Icon(Icons.play_arrow_rounded, size: 20),
+                                  label: Text(_isRunning ? 'Running...' : 'Run Code'),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
-                ],
-              ),
+                ),
+        ),
       ),
     );
   }

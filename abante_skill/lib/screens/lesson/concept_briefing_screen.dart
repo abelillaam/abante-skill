@@ -9,6 +9,7 @@ import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/editor_dot.dart';
+import '../../widgets/practice_time_tracker.dart';
 import '../../widgets/pressable_scale.dart';
 import '../../widgets/progress_dots.dart';
 import 'ide_workspace_screen.dart';
@@ -42,18 +43,19 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
     // Reuse the cached cards if this lesson already has them, so reopening
     // the briefing shows the same content instead of new AI-regenerated one.
     final cachedCards = widget.lesson.theoryCards;
-    final isLegacyPlaceholder = cachedCards != null &&
-        cachedCards.isNotEmpty &&
-        cachedCards.first['heading'] == legacyPlaceholderCardHeading;
+    final isLegacyPlaceholder =
+        cachedCards != null && cachedCards.isNotEmpty && cachedCards.first['heading'] == legacyPlaceholderCardHeading;
     if (cachedCards != null && cachedCards.isNotEmpty && !isLegacyPlaceholder) {
       setState(() {
         _cards = cachedCards
-            .map((c) => TheoryCard(
-                  heading: c['heading'] ?? '',
-                  analogy: c['analogy'] ?? '',
-                  snippet: c['snippet'] ?? '',
-                  language: c['language'] ?? 'code',
-                ))
+            .map(
+              (c) => TheoryCard(
+                heading: c['heading'] ?? '',
+                analogy: c['analogy'] ?? '',
+                snippet: c['snippet'] ?? '',
+                language: c['language'] ?? 'code',
+              ),
+            )
             .toList();
         _isLoading = false;
       });
@@ -92,12 +94,7 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
     CurriculumRepository.cacheTheoryCards(
       widget.lesson.id,
       cards
-          .map((c) => {
-                'heading': c.heading,
-                'analogy': c.analogy,
-                'snippet': c.snippet,
-                'language': c.language,
-              })
+          .map((c) => {'heading': c.heading, 'analogy': c.analogy, 'snippet': c.snippet, 'language': c.language})
           .toList(),
     );
     final user = FirebaseAuth.instance.currentUser;
@@ -116,9 +113,7 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
       // would complete the Future that showLessonOverviewSheet's caller is
       // awaiting (a replaced route resolves the same as a popped one),
       // which pops the IDE workspace screen the instant it appears.
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => IdeWorkspaceScreen(lesson: widget.lesson)),
-      );
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => IdeWorkspaceScreen(lesson: widget.lesson)));
       return;
     }
     _pageController.nextPage(duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
@@ -126,50 +121,46 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
+    return PracticeTimeTracker(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop()),
+          title: Text(widget.lesson.title),
+          centerTitle: true,
         ),
-        title: Text(widget.lesson.title),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: _isLoading
-            ? const LessonLoading(message: 'Writing your lesson…')
-            : _loadFailed
-            ? LessonLoadError(
-                onRetry: _load,
-                secondaryLabel: 'Skip to coding',
-                onSecondary: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => IdeWorkspaceScreen(lesson: widget.lesson)),
-                ),
-              )
-            : Column(
-                children: [
-                  const SizedBox(height: 8),
-                  ProgressDots(count: _cards.length, currentIndex: _pageIndex),
-                  Expanded(
-                    child: PageView.builder(
-                      controller: _pageController,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: _cards.length,
-                      onPageChanged: (index) => setState(() => _pageIndex = index),
-                      itemBuilder: (context, index) => _TheoryCardView(card: _cards[index]),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                    child: PressableScale(
-                      child: FilledButton(
-                        onPressed: _onNext,
-                        child: Text(_isLastCard ? 'Start Coding' : 'Next'),
+        body: SafeArea(
+          child: _isLoading
+              ? const LessonLoading(message: 'Writing your lesson…')
+              : _loadFailed
+              ? LessonLoadError(
+                  onRetry: _load,
+                  secondaryLabel: 'Skip to coding',
+                  onSecondary: () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => IdeWorkspaceScreen(lesson: widget.lesson))),
+                )
+              : Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    ProgressDots(count: _cards.length, currentIndex: _pageIndex),
+                    Expanded(
+                      child: PageView.builder(
+                        controller: _pageController,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _cards.length,
+                        onPageChanged: (index) => setState(() => _pageIndex = index),
+                        itemBuilder: (context, index) => _TheoryCardView(card: _cards[index]),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                      child: PressableScale(
+                        child: FilledButton(onPressed: _onNext, child: Text(_isLastCard ? 'Start Coding' : 'Next')),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -187,15 +178,9 @@ class _TheoryCardView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            card.heading,
-            style: AppTheme.headline(fontSize: 24, weight: FontWeight.w800),
-          ),
+          Text(card.heading, style: AppTheme.headline(fontSize: 24, weight: FontWeight.w800)),
           const SizedBox(height: 14),
-          Text(
-            card.analogy,
-            style: TextStyle(fontSize: 16, color: AppColors.textSecondary, height: 1.5),
-          ),
+          Text(card.analogy, style: TextStyle(fontSize: 16, color: AppColors.textSecondary, height: 1.5)),
           const SizedBox(height: 24),
           Container(
             width: double.infinity,
@@ -229,10 +214,7 @@ class _TheoryCardView extends StatelessWidget {
                 const SizedBox(height: 10),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                  child: Text(
-                    card.snippet,
-                    style: AppTheme.code(),
-                  ),
+                  child: Text(card.snippet, style: AppTheme.code()),
                 ),
               ],
             ),
