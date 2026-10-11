@@ -1,16 +1,10 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
-
-import '../config/groq_config.dart';
 import '../models/lesson.dart';
 import '../models/lesson_icons.dart';
+import 'groq_client.dart';
 
-/// Generates a personalized lesson curriculum via Groq (Llama 3.3 70B).
+/// Generates a personalized lesson curriculum via Groq.
 class CurriculumService {
   CurriculumService._();
-
-  static const _endpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
   static const _systemPrompt = '''
 You are a curriculum designer for a coding education app. Given a learning
@@ -34,46 +28,24 @@ Generate 2-3 units, each with 3-5 lessons, ordered from foundational to
 advanced for the given experience level. Keep titles concise.
 ''';
 
-  /// Generates a curriculum, or returns [fallback] if the request or
-  /// response parsing fails for any reason.
+  /// Generates a personalized curriculum. Throws [GroqUnavailable] if the
+  /// AI can't produce one even after retrying — callers show a "try again"
+  /// state rather than quietly saving a generic sample course.
   static Future<List<LessonUnit>> generate({
     required String track,
     required String level,
     required String dailyGoal,
-    List<LessonUnit> fallback = mockUnits,
   }) async {
-    try {
-      final response = await http.post(
-        Uri.parse(_endpoint),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${GroqConfig.apiKey}',
-        },
-        body: jsonEncode({
-          'model': 'openai/gpt-oss-120b',
-          'response_format': {'type': 'json_object'},
-          'temperature': 0.7,
-          'messages': [
-            {'role': 'system', 'content': _systemPrompt},
-            {
-              'role': 'user',
-              'content': 'Track: $track. Experience level: $level. Daily goal: $dailyGoal. '
-                  'Generate a personalized coding curriculum.',
-            },
-          ],
-        }),
-      );
-
-      if (response.statusCode != 200) return fallback;
-
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final content = body['choices'][0]['message']['content'] as String;
-      final parsed = jsonDecode(content) as Map<String, dynamic>;
-      final units = _parseUnits(parsed);
-      return units.isEmpty ? fallback : units;
-    } catch (_) {
-      return fallback;
-    }
+    final parsed = await GroqClient.chatJson(
+      system: _systemPrompt,
+      user:
+          'Track: $track. Experience level: $level. Daily goal: $dailyGoal. '
+          'Generate a personalized coding curriculum.',
+      timeout: const Duration(seconds: 45),
+    );
+    final units = _parseUnits(parsed);
+    if (units.isEmpty) throw const GroqUnavailable('no units in reply');
+    return units;
   }
 
   static List<LessonUnit> _parseUnits(Map<String, dynamic> json) {

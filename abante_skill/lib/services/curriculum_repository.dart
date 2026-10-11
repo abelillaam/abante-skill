@@ -21,6 +21,14 @@ class CurriculumRepository {
     level = null;
   }
 
+  /// True when the saved course is the built-in sample course rather than
+  /// one built from the user's answers — which older app versions saved
+  /// silently if the AI failed during sign-up.
+  static bool get isSampleCourse =>
+      units.isNotEmpty &&
+      units.first.lessons.isNotEmpty &&
+      units.first.lessons.first.id == mockUnits.first.lessons.first.id;
+
   /// Whether [lessonId] is already completed (i.e. opening it is a review).
   static bool isCompleted(String lessonId) => units.any(
         (unit) => unit.lessons.any((lesson) => lesson.id == lessonId && lesson.status == LessonStatus.completed),

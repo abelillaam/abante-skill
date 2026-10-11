@@ -39,6 +39,8 @@ class SessionService {
   }
 
   /// Generates and saves a fresh curriculum from onboarding answers.
+  /// Throws [GroqUnavailable] if the AI couldn't build one; nothing is
+  /// saved in that case.
   static Future<void> createCurriculum(
     User user, {
     required String track,

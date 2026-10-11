@@ -5,6 +5,7 @@ import '../../services/google_auth_service.dart';
 import '../../services/session_service.dart';
 import '../../theme/app_colors.dart';
 import '../main_shell.dart';
+import '../onboarding/course_setup_screen.dart';
 import '../onboarding/onboarding_questionnaire_screen.dart';
 
 /// Answers from the onboarding questionnaire.
@@ -21,18 +22,14 @@ class OnboardingAnswers {
 /// * Existing account (has saved progress) → restores it and opens the app.
 ///   This is the "merge" path: signing up again — with Google or otherwise —
 ///   for an account that already exists never overwrites its progress.
-/// * New account with onboarding [answers] → builds their curriculum first.
+/// * New account with onboarding [answers] → builds their curriculum first
+///   (on [CourseSetupScreen], which handles retrying if the AI is busy).
 /// * New account without answers (e.g. first-ever "Continue with Google"
 ///   from the login screen) → sends them through onboarding.
 ///
 /// Returns false (after showing an error) if progress couldn't be checked,
 /// e.g. no internet; the caller should stay on its screen.
-Future<bool> enterApp(
-  BuildContext context,
-  User user, {
-  OnboardingAnswers? answers,
-  ValueChanged<bool>? onGenerating,
-}) async {
+Future<bool> enterApp(BuildContext context, User user, {OnboardingAnswers? answers}) async {
   final navigator = Navigator.of(context);
   final messenger = ScaffoldMessenger.of(context);
 
@@ -54,23 +51,18 @@ Future<bool> enterApp(
       );
       return true;
     }
-    onGenerating?.call(true);
-    await SessionService.createCurriculum(
-      user,
-      track: answers.track,
-      level: answers.level,
-      dailyGoal: answers.dailyGoal,
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => CourseSetupScreen(answers: answers)),
+      (route) => false,
     );
+    return true;
   } else if (answers != null) {
     messenger.showSnackBar(
       const SnackBar(content: Text('Welcome back! This account already exists, so we kept all your progress.')),
     );
   }
 
-  navigator.pushAndRemoveUntil(
-    MaterialPageRoute(builder: (_) => const MainShell()),
-    (route) => false,
-  );
+  navigator.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const MainShell()), (route) => false);
   return true;
 }
 

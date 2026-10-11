@@ -1,7 +1,8 @@
-## What's new in 1.0.1
+## What's new in 1.0.2
 
-- Lessons now load their own content every time, instead of sometimes showing the same placeholder lesson on the first open
-- If the lesson writer is busy, the app waits and retries automatically
-- If a lesson really can't load, you'll see a "Try again" button instead of unrelated content
-- Lessons that got stuck with the placeholder fix themselves the next time you open them
-- Faster lesson loading
+- Your course is always built from the answers you pick when you sign up
+- If the course builder is busy, the app waits and retries automatically
+- If it still can't build your course, you can try again or change your answers, instead of getting a generic sample course
+- Accounts that got the sample course can now build their real course from the Learn tab
+
+Also includes 1.0.1: lessons now always load their own content.

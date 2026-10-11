@@ -6,19 +6,13 @@ import '../../services/google_auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/auth_scaffold.dart';
-import '../../widgets/curriculum_generating_overlay.dart';
 import '../../widgets/google_button.dart';
 import '../../widgets/pressable_scale.dart';
 import 'auth_flow.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({
-    super.key,
-    this.onboardingTrack,
-    this.onboardingLevel,
-    this.onboardingDailyGoal,
-  });
+  const SignupScreen({super.key, this.onboardingTrack, this.onboardingLevel, this.onboardingDailyGoal});
 
   /// Answers from the onboarding questionnaire, if the user came from there.
   /// Null when reached directly (e.g. via the "Sign up" link on Login).
@@ -37,7 +31,6 @@ class _SignupScreenState extends State<SignupScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _isGoogleLoading = false;
-  bool _isGeneratingCurriculum = false;
   String? _emailError;
   String? _passwordError;
 
@@ -71,21 +64,14 @@ class _SignupScreenState extends State<SignupScreen> {
       _passwordError = password.length < _minPasswordLength
           ? 'Use at least $_minPasswordLength characters'
           : (RegExp(r'[A-Za-z]').hasMatch(password) && RegExp(r'\d').hasMatch(password)
-              ? null
-              : 'Mix letters and numbers');
+                ? null
+                : 'Mix letters and numbers');
     });
     return _emailError == null && _passwordError == null;
   }
 
   Future<void> _enter(User user) async {
-    await enterApp(
-      context,
-      user,
-      answers: _answers,
-      onGenerating: (value) {
-        if (mounted) setState(() => _isGeneratingCurriculum = value);
-      },
-    );
+    await enterApp(context, user, answers: _answers);
   }
 
   Future<void> _createAccount() async {
@@ -133,15 +119,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        AuthScaffold(
-          title: "You're almost in!",
-          subtitle: 'Create an account to save your progress.',
-          child: _buildForm(),
-        ),
-        if (_isGeneratingCurriculum) const Positioned.fill(child: CurriculumGeneratingOverlay()),
-      ],
+    return AuthScaffold(
+      title: "You're almost in!",
+      subtitle: 'Create an account to save your progress.',
+      child: _buildForm(),
     );
   }
 
@@ -194,9 +175,7 @@ class _SignupScreenState extends State<SignupScreen> {
         Center(
           child: TextButton(
             onPressed: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
+              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
             },
             child: RichText(
               text: TextSpan(

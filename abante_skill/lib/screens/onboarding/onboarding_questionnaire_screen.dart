@@ -1,15 +1,14 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/session_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/progress_dots.dart';
-import '../../widgets/curriculum_generating_overlay.dart';
 import '../../widgets/selectable_option_card.dart';
+import '../auth/auth_flow.dart';
 import '../auth/signup_screen.dart';
-import '../main_shell.dart';
 import '../splash_screen.dart';
+import 'course_setup_screen.dart';
 
 class _Question {
   const _Question({required this.title, required this.subtitle, required this.options});
@@ -76,24 +75,11 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
 
   bool get _isLastPage => _pageIndex == _questions.length - 1;
   bool get _canContinue => _answers[_pageIndex] != null;
-  bool _isGenerating = false;
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
-  }
-
-  Future<void> _buildCurriculumForSignedInUser(String track, String level, String dailyGoal) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    setState(() => _isGenerating = true);
-    await SessionService.createCurriculum(user, track: track, level: level, dailyGoal: dailyGoal);
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainShell()),
-      (route) => false,
-    );
   }
 
   void _onContinue() {
@@ -103,16 +89,19 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
       final level = _questions[1].options[_answers[1]!].title;
       final dailyGoal = _questions[2].options[_answers[2]!].title;
       if (widget.alreadySignedIn) {
-        _buildCurriculumForSignedInUser(track, level, dailyGoal);
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => CourseSetupScreen(
+              answers: OnboardingAnswers(track: track, level: level, dailyGoal: dailyGoal),
+            ),
+          ),
+          (route) => false,
+        );
         return;
       }
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => SignupScreen(
-            onboardingTrack: track,
-            onboardingLevel: level,
-            onboardingDailyGoal: dailyGoal,
-          ),
+          builder: (_) => SignupScreen(onboardingTrack: track, onboardingLevel: level, onboardingDailyGoal: dailyGoal),
         ),
       );
       return;
@@ -122,14 +111,18 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
 
   Future<void> _onBack() async {
     if (_pageIndex == 0) {
+      // Opened from the dashboard to rebuild a course: just go back.
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+        return;
+      }
       if (widget.alreadySignedIn) {
         // Nothing behind this screen — backing out means signing out.
         await SessionService.signOut();
         if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const SplashScreen()),
-          (route) => false,
-        );
+        Navigator.of(
+          context,
+        ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const SplashScreen()), (route) => false);
         return;
       }
       Navigator.of(context).pop();
@@ -140,13 +133,9 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
 
   @override
   Widget build(BuildContext context) {
-    if (_isGenerating) return const CurriculumGeneratingOverlay();
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: _onBack,
-        ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20), onPressed: _onBack),
         title: ProgressDots(count: _questions.length, currentIndex: _pageIndex),
         centerTitle: true,
       ),
@@ -166,15 +155,9 @@ class _OnboardingQuestionnaireScreenState extends State<OnboardingQuestionnaireS
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          question.title,
-                          style: AppTheme.headline(fontSize: 26, weight: FontWeight.w800),
-                        ),
+                        Text(question.title, style: AppTheme.headline(fontSize: 26, weight: FontWeight.w800)),
                         const SizedBox(height: 8),
-                        Text(
-                          question.subtitle,
-                          style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
-                        ),
+                        Text(question.subtitle, style: TextStyle(fontSize: 15, color: AppColors.textSecondary)),
                         const SizedBox(height: 28),
                         Expanded(
                           child: ListView.separated(

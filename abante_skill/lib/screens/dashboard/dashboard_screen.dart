@@ -16,6 +16,7 @@ import '../../widgets/pressable_scale.dart';
 import '../../widgets/profile_avatar.dart';
 import '../../widgets/wave_clipper.dart';
 import '../lesson/lesson_overview_sheet.dart';
+import '../onboarding/onboarding_questionnaire_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -50,6 +51,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ]);
     if (!mounted) return;
     setState(() => _profile = results.first as UserProfile? ?? _profile);
+  }
+
+  /// For accounts that were left with the built-in sample course: confirm,
+  /// then re-ask their preferences and build the real one.
+  Future<void> _rebuildCourse() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Build your own course?'),
+        content: const Text(
+          "We'll ask your preferences again and build a course just for you. "
+          'It replaces this sample course and its lesson progress — your XP, streak and hearts stay.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Not now')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Build my course')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const OnboardingQuestionnaireScreen(alreadySignedIn: true)),
+    );
+    if (mounted) setState(() {});
   }
 
   /// The unit holding the user's next lesson (not just the first unit).
@@ -100,6 +126,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                 padding: const EdgeInsets.only(bottom: 32),
                 children: [
+                  if (CurriculumRepository.isSampleCourse) _SampleCourseBanner(onBuild: _rebuildCourse),
                   if (activeLesson != null) _ContinueLearningCard(lesson: activeLesson, onTap: _openLesson),
                   for (final unit in units) ...[
                     _UnitBanner(unit: unit),
@@ -524,6 +551,59 @@ class _LessonListCard extends StatelessWidget {
           ),
         ),
         ),
+      ),
+    );
+  }
+}
+
+/// Shown when the account still has the generic sample course (older app
+/// versions saved it if the AI failed during sign-up).
+class _SampleCourseBanner extends StatelessWidget {
+  const _SampleCourseBanner({required this.onBuild});
+
+  final VoidCallback onBuild;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunken,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.6), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'This is a sample course',
+                  style: AppTheme.headline(fontSize: 16, weight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "Your personalized course didn't finish building when you signed up. "
+            'Build it now to get lessons picked for your goals and level.',
+            style: TextStyle(fontSize: 13.5, color: AppColors.textSecondary, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+              onPressed: onBuild,
+              child: const Text('Build my course'),
+            ),
+          ),
+        ],
       ),
     );
   }
