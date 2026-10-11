@@ -1,8 +1,7 @@
-## What's new
+## What's new in 1.0.1
 
-- Fresh new look: a new logo, soft pastel colors, and a dark mode
-- Easier coding on your phone: the editor stays visible while you type, with quick keys for brackets, quotes and Tab
-- Google sign-up now keeps your existing progress
-- Forgot password, profile photos, sound effects and notification settings all work
-- Replay finished lessons as reviews to earn hearts back
-- The app now tells you when an update is available
+- Lessons now load their own content every time, instead of sometimes showing the same placeholder lesson on the first open
+- If the lesson writer is busy, the app waits and retries automatically
+- If a lesson really can't load, you'll see a "Try again" button instead of unrelated content
+- Lessons that got stuck with the placeholder fix themselves the next time you open them
+- Faster lesson loading

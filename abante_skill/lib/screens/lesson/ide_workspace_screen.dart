@@ -10,6 +10,7 @@ import '../../services/ai_tutor_service.dart';
 import '../../services/app_settings.dart';
 import '../../services/certificate_repository.dart';
 import '../../services/curriculum_repository.dart';
+import '../../services/groq_client.dart';
 import '../../services/hearts_repository.dart';
 import '../../services/lesson_exercise_service.dart';
 import '../../services/session_service.dart';
@@ -22,6 +23,7 @@ import '../../widgets/editor_dot.dart';
 import '../../widgets/pressable_scale.dart';
 import '../main_shell.dart';
 import 'certificate_dialog.dart';
+import 'lesson_load_states.dart';
 import 'lesson_success_dialog.dart';
 import 'out_of_hearts_screen.dart';
 
@@ -56,6 +58,7 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
   bool _lastRunSucceeded = false;
   String _output = '';
   bool _isLoadingExercise = false;
+  bool _exerciseFailed = false;
   LessonExercise? _exercise;
   final _sessionStopwatch = Stopwatch()..start();
 
@@ -90,7 +93,8 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
 
     // Reuse the cached exercise if this lesson already has one, so
     // reopening it shows the same exercise instead of a new random one.
-    if (lesson.hasCachedExercise) {
+    final isLegacyPlaceholder = lesson.exerciseInstruction?.startsWith(legacyPlaceholderExercise) ?? false;
+    if (lesson.hasCachedExercise && !isLegacyPlaceholder) {
       final exercise = LessonExercise(
         instruction: lesson.exerciseInstruction!,
         starterCode: lesson.exerciseStarterCode ?? '',
@@ -105,12 +109,28 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
       return;
     }
 
-    setState(() => _isLoadingExercise = true);
-    final exercise = await LessonExerciseService.generate(
-      lessonTitle: lesson.title,
-      lessonSummary: lesson.summary,
-      level: CurriculumRepository.level,
-    );
+    setState(() {
+      _isLoadingExercise = true;
+      _exerciseFailed = false;
+    });
+    final LessonExercise exercise;
+    try {
+      exercise = await LessonExerciseService.generate(
+        lessonTitle: lesson.title,
+        lessonSummary: lesson.summary,
+        level: CurriculumRepository.level,
+      );
+    } on GroqUnavailable {
+      // Show "try again" instead of an unrelated stand-in task, and save
+      // nothing, so the lesson isn't stuck with the wrong exercise.
+      if (mounted) {
+        setState(() {
+          _isLoadingExercise = false;
+          _exerciseFailed = true;
+        });
+      }
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _exercise = exercise;
@@ -346,7 +366,9 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
       ),
       body: SafeArea(
         child: _isLoadingExercise
-            ? const Center(child: CircularProgressIndicator())
+            ? const LessonLoading(message: 'Writing your coding task…')
+            : _exerciseFailed
+            ? LessonLoadError(onRetry: _loadExercise)
             : Column(
                 children: [
                   if (editing)

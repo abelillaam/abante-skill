@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/lesson.dart';
 import '../../services/curriculum_repository.dart';
+import '../../services/groq_client.dart';
 import '../../services/lesson_content_service.dart';
 import '../../services/user_repository.dart';
 import '../../theme/app_colors.dart';
@@ -11,6 +12,7 @@ import '../../widgets/editor_dot.dart';
 import '../../widgets/pressable_scale.dart';
 import '../../widgets/progress_dots.dart';
 import 'ide_workspace_screen.dart';
+import 'lesson_load_states.dart';
 
 class ConceptBriefingScreen extends StatefulWidget {
   const ConceptBriefingScreen({super.key, required this.lesson});
@@ -25,7 +27,8 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
   final _pageController = PageController();
   int _pageIndex = 0;
   bool _isLoading = true;
-  List<TheoryCard> _cards = fallbackTheoryCards;
+  bool _loadFailed = false;
+  List<TheoryCard> _cards = const [];
 
   bool get _isLastCard => _pageIndex == _cards.length - 1;
 
@@ -39,7 +42,10 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
     // Reuse the cached cards if this lesson already has them, so reopening
     // the briefing shows the same content instead of new AI-regenerated one.
     final cachedCards = widget.lesson.theoryCards;
-    if (cachedCards != null && cachedCards.isNotEmpty) {
+    final isLegacyPlaceholder = cachedCards != null &&
+        cachedCards.isNotEmpty &&
+        cachedCards.first['heading'] == legacyPlaceholderCardHeading;
+    if (cachedCards != null && cachedCards.isNotEmpty && !isLegacyPlaceholder) {
       setState(() {
         _cards = cachedCards
             .map((c) => TheoryCard(
@@ -54,20 +60,34 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
       return;
     }
 
-    final cards = await LessonContentService.generate(
-      lessonTitle: widget.lesson.title,
-      lessonSummary: widget.lesson.summary,
-      level: CurriculumRepository.level,
-    );
+    setState(() {
+      _isLoading = true;
+      _loadFailed = false;
+    });
+    final List<TheoryCard> cards;
+    try {
+      cards = await LessonContentService.generate(
+        lessonTitle: widget.lesson.title,
+        lessonSummary: widget.lesson.summary,
+        level: CurriculumRepository.level,
+      );
+    } on GroqUnavailable {
+      // Show a "try again" state — never stand-in content from another
+      // topic, and nothing gets saved, so the next try starts fresh.
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadFailed = true;
+        });
+      }
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _cards = cards;
+      _pageIndex = 0;
       _isLoading = false;
     });
-
-    // Generation failed and we got the generic placeholder cards — show
-    // them, but don't save them, so the next open retries the real thing.
-    if (identical(cards, fallbackTheoryCards)) return;
 
     CurriculumRepository.cacheTheoryCards(
       widget.lesson.id,
@@ -117,7 +137,15 @@ class _ConceptBriefingScreenState extends State<ConceptBriefingScreen> {
       ),
       body: SafeArea(
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const LessonLoading(message: 'Writing your lesson…')
+            : _loadFailed
+            ? LessonLoadError(
+                onRetry: _load,
+                secondaryLabel: 'Skip to coding',
+                onSecondary: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => IdeWorkspaceScreen(lesson: widget.lesson)),
+                ),
+              )
             : Column(
                 children: [
                   const SizedBox(height: 8),
