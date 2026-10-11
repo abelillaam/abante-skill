@@ -111,6 +111,14 @@ class UserRepository {
     }
   }
 
+  /// The name to show for [user] (e.g. on certificates): the name they set
+  /// in their profile, falling back to their login account's name.
+  static Future<String> displayNameFor(User user) async {
+    final saved = await loadProfile(user);
+    final name = saved?.name.trim() ?? '';
+    return name.isNotEmpty ? name : defaultProfileFor(user).name;
+  }
+
   /// Returns the user's saved onboarding experience level (e.g. "Beginner"),
   /// or null if unknown.
   static Future<String?> loadLevel(String uid) async {

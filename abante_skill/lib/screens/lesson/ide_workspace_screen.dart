@@ -246,13 +246,14 @@ class _IdeWorkspaceScreenState extends State<IdeWorkspaceScreen> {
             if (earnedCertificate != null) {
               unawaited(Sfx.celebrate());
               final user = FirebaseAuth.instance.currentUser;
-              final displayName = user?.displayName?.trim().isNotEmpty == true
-                  ? user!.displayName!.trim()
-                  : (user?.email?.split('@').first ?? 'there');
+              // The name from their profile (what they set in Edit Profile),
+              // not their Google/login account's name.
+              final userName = user == null ? 'there' : await UserRepository.displayNameFor(user);
+              if (!mounted) return;
               await showCertificateDialog(
                 context,
                 unitTitle: earnedCertificate.unitTitle,
-                userName: displayName,
+                userName: userName,
                 earnedAt: earnedCertificate.earnedAt,
               );
               if (!mounted) return;
